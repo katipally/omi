@@ -1,11 +1,11 @@
 {
   "files": {
     "desktop/macos/Desktop/Sources/Chat/AgentBridge.swift": 2109,
-    "desktop/macos/Desktop/Sources/Chat/AgentRuntimeProcess.swift": 4242
+    "desktop/macos/Desktop/Sources/Chat/AgentRuntimeProcess.swift": 4260
   },
   "raise_justifications": {
     "desktop/macos/Desktop/Sources/Chat/AgentBridge.swift": "Strict concurrency annotations (Ticket 14) add Sendable conformances and isolation qualifiers without changing runtime behavior.",
-    "desktop/macos/Desktop/Sources/Chat/AgentRuntimeProcess.swift": "Strict concurrency annotations (Ticket 14) add Sendable conformances and isolation qualifiers without changing runtime behavior."
+    "desktop/macos/Desktop/Sources/Chat/AgentRuntimeProcess.swift": "Detects the installed Codex CLI and seeds OMI_CODEX_ADAPTER_COMMAND so the shared agent runtime can drive Codex over ACP."
   },
   "threshold": 1500
 }

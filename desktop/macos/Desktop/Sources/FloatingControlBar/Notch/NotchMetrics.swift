@@ -65,6 +65,20 @@ enum NotchMetrics {
     return screen.safeAreaInsets.top > 0
   }
 
+  /// The physical camera housing width alone (no safety padding) — what the
+  /// chrome icons visually hug.
+  static func cameraWidth(auxiliaryTopLeftArea: NSRect?, auxiliaryTopRightArea: NSRect?) -> CGFloat {
+    if let leftArea = auxiliaryTopLeftArea,
+      let rightArea = auxiliaryTopRightArea,
+      !leftArea.isEmpty,
+      !rightArea.isEmpty
+    {
+      let measuredGap = rightArea.minX - leftArea.maxX
+      if measuredGap > 0 { return measuredGap }
+    }
+    return fallbackHiddenCenterWidth
+  }
+
   /// The camera dead zone the chrome must straddle: the measured gap between
   /// the two auxiliary top areas plus safety padding.
   static func hiddenCenterWidth(auxiliaryTopLeftArea: NSRect?, auxiliaryTopRightArea: NSRect?) -> CGFloat {

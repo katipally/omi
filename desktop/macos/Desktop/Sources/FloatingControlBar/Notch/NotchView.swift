@@ -87,36 +87,47 @@ struct NotchView: View {
     }
   }
 
+  /// The black island is its OWN stable layer: a NotchShape fill whose frame
+  /// always interpolates (no conditional content inside, so its identity can
+  /// never break). The presentation-switched content crossfades ON TOP,
+  /// clipped to the same shape — the Dynamic Island grammar: the black mass
+  /// grows, the content swaps inside it.
   private var notchBody: some View {
-    bodyContent
-      .frame(width: displayedSize.width, height: displayedSize.height, alignment: .top)
-      .background(.black)
-      .clipShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius))
-      // 1pt seam hider: the top fillets must never reveal a hairline gap
-      // against the physical black notch / bezel.
-      .overlay(alignment: .top) {
-        Rectangle()
-          .fill(.black)
-          .frame(height: 1)
-          .padding(.horizontal, topCornerRadius)
-      }
-      .shadow(
-        color: (vm.state == .open || isHovering) ? .black.opacity(0.7) : .clear,
-        radius: 8
-      )
-      .contentShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius))
-      .onHover(perform: handleHover)
-      .onTapGesture(perform: handleTap)
-      .onExitCommand {
-        guard vm.state == .open else { return }
-        withAnimation(NotchAnimation.close) { vm.close() }
-      }
-      // A voice answer streaming while closed opens the panel under the mouse
-      // so the reply lands in view (chat-first: the answer IS the chat).
-      .onChange(of: barState.isVoiceResponseGlowActive) { _, active in
-        guard active, vm.state == .closed, vm.screenFrame.contains(NSEvent.mouseLocation) else { return }
-        withAnimation(NotchAnimation.open) { vm.open(tab: .chat) }
-      }
+    ZStack(alignment: .top) {
+      NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius)
+        .fill(Color.black)
+        .frame(width: displayedSize.width, height: displayedSize.height)
+        // 1pt seam hider: the top fillets must never reveal a hairline gap
+        // against the physical black notch / bezel.
+        .overlay(alignment: .top) {
+          Rectangle()
+            .fill(.black)
+            .frame(height: 1)
+            .padding(.horizontal, topCornerRadius)
+        }
+        .shadow(
+          color: (vm.state == .open || isHovering) ? .black.opacity(0.7) : .clear,
+          radius: 8
+        )
+      bodyContent
+        .frame(width: displayedSize.width, height: displayedSize.height, alignment: .top)
+        .clipShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius))
+    }
+    .animation(morphAnimation, value: presentation)
+    .animation(heightAnimation, value: vm.chatBodyHeight)
+    .contentShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius))
+    .onHover(perform: handleHover)
+    .onTapGesture(perform: handleTap)
+    .onExitCommand {
+      guard vm.state == .open else { return }
+      withAnimation(NotchAnimation.close) { vm.close() }
+    }
+    // A voice answer streaming while closed opens the panel under the mouse
+    // so the reply lands in view (chat-first: the answer IS the chat).
+    .onChange(of: barState.isVoiceResponseGlowActive) { _, active in
+      guard active, vm.state == .closed, vm.screenFrame.contains(NSEvent.mouseLocation) else { return }
+      withAnimation(NotchAnimation.open) { vm.open(tab: .chat) }
+    }
   }
 
   @ViewBuilder
@@ -177,41 +188,60 @@ struct NotchView: View {
     }
   }
 
-  /// Compact voice chrome: the state indicator replaces the logo in the left
-  /// lobe; the camera void and gear lobe stay put.
+  /// Compact voice chrome: the state indicator replaces the logo, still
+  /// hugging the camera module like the closed chrome.
   private func voiceChrome<Indicator: View>(@ViewBuilder indicator: () -> Indicator) -> some View {
     HStack(spacing: 0) {
+      Spacer(minLength: 0)
       indicator()
         .frame(
-          width: (displayedSize.width - vm.closedNotchSize.width) / 2 + NotchMetrics.closedSideWidth,
-          height: vm.closedNotchSize.height)
+          width: NotchMetrics.closedSideWidth + 10, height: vm.closedNotchSize.height,
+          alignment: .trailing)
       Color.clear
-        .frame(width: max(0, vm.closedNotchSize.width - NotchMetrics.closedSideWidth * 2))
+        .frame(width: cameraGap)
       settingsButton
         .frame(
-          width: (displayedSize.width - vm.closedNotchSize.width) / 2 + NotchMetrics.closedSideWidth,
-          height: vm.closedNotchSize.height)
+          width: NotchMetrics.closedSideWidth + 10, height: vm.closedNotchSize.height,
+          alignment: .leading)
+      Spacer(minLength: 0)
     }
     .frame(height: vm.closedNotchSize.height)
   }
 
   // MARK: - Closed chrome (always-visible Omi identity)
 
+  /// The gap the icons visually straddle: the camera housing plus a small
+  /// margin on a real notch, a modest fixed gap on the fake notch.
+  private var cameraGap: CGFloat {
+    vm.hasPhysicalNotch ? vm.cameraWidth + 8 : 56
+  }
+
+  /// Logo and gear hug the camera module: [logo][camera][gear] centered as a
+  /// cluster, outer space breathes.
   private var closedChrome: some View {
     HStack(spacing: 0) {
+      Spacer(minLength: 0)
       Button {
         withAnimation(NotchAnimation.open) { vm.open(tab: .agents) }
       } label: {
         NotchOmiMark()
-          .frame(width: NotchMetrics.closedSideWidth, height: vm.closedNotchSize.height)
+          .frame(width: 24, height: 24)
+          .frame(
+            width: NotchMetrics.closedSideWidth, height: vm.closedNotchSize.height,
+            alignment: .trailing
+          )
           .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
       .accessibilityLabel("Omi agents")
       Color.clear
-        .frame(width: max(0, vm.closedNotchSize.width - NotchMetrics.closedSideWidth * 2))
+        .frame(width: cameraGap)
       settingsButton
-        .frame(width: NotchMetrics.closedSideWidth, height: vm.closedNotchSize.height)
+        .frame(
+          width: NotchMetrics.closedSideWidth, height: vm.closedNotchSize.height,
+          alignment: .leading
+        )
+      Spacer(minLength: 0)
     }
     .frame(height: vm.closedNotchSize.height)
   }
@@ -228,24 +258,29 @@ struct NotchView: View {
 
   // MARK: - Open header
 
+  /// Jarvis grammar: the tab cluster and the gear FLANK the camera module at
+  /// fixed offsets from center — controls stay clustered around the notch
+  /// they grew out of, not at the panel edges.
   private var headerRow: some View {
     HStack(spacing: 0) {
+      Spacer(minLength: 0)
       HStack(spacing: 6) {
         ForEach(NotchTab.allCases) { tab in
           tabButton(tab)
         }
       }
-      .frame(maxWidth: .infinity, alignment: .leading)
       // Camera void: header controls must never render under the physical
-      // notch, so reserve the full closed-chrome width there.
+      // notch.
       Color.clear
-        .frame(width: vm.hasPhysicalNotch ? vm.closedNotchSize.width : NotchMetrics.headerCameraReserve)
+        .frame(width: cameraGap)
       HStack(spacing: 6) {
         settingsButton
       }
-      .frame(maxWidth: .infinity, alignment: .trailing)
+      // Mirror the two-tab cluster's width so the camera void stays exactly
+      // screen-centered (the gear alone is narrower than two tabs).
+      .frame(width: 66, alignment: .leading)
+      Spacer(minLength: 0)
     }
-    .padding(.horizontal, 22)
     .frame(height: vm.closedNotchSize.height)
     .padding(.top, 2)
   }

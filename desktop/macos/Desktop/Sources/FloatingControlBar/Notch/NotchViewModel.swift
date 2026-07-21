@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import SwiftUI
 
 /// Per-display source of truth for one notch panel: the authoritative
 /// closed/open toggle, tab selection, dynamic chat height, and all sizing.
@@ -16,6 +17,8 @@ final class NotchViewModel: ObservableObject {
   @Published private(set) var state: State = .closed
   @Published var selectedTab: NotchTab = .chat
   @Published private(set) var closedNotchSize: CGSize
+  /// Physical camera housing width (no padding) — chrome icons hug its edges.
+  @Published private(set) var cameraWidth: CGFloat
   @Published private(set) var screenFrame: CGRect
   /// Chat body height as reported by the chat view's measure loop. Drives the
   /// dynamic panel height: the notch grows just enough to fit the current
@@ -50,6 +53,7 @@ final class NotchViewModel: ObservableObject {
     screenFrame: CGRect,
     hasPhysicalNotch: Bool,
     closedNotchSize: CGSize,
+    cameraWidth: CGFloat = NotchMetrics.fallbackHiddenCenterWidth,
     now: @escaping () -> Date = { Date() },
     sleep: @escaping (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) },
     defaults: UserDefaults = .standard
@@ -61,6 +65,7 @@ final class NotchViewModel: ObservableObject {
     self.screenFrame = screenFrame
     self.hasPhysicalNotch = hasPhysicalNotch
     self.closedNotchSize = closedNotchSize
+    self.cameraWidth = cameraWidth
     // Seed the last-known chat height so the first open after launch morphs
     // straight to the right size instead of jumping min -> measured. The chat
     // view's measure loop corrects it on mount if the answer differs.
@@ -79,6 +84,10 @@ final class NotchViewModel: ObservableObject {
       screenFrame: screen.frame,
       hasPhysicalNotch: NotchMetrics.screenHasCameraHousing(screen),
       closedNotchSize: NotchMetrics.closedSize(for: screen),
+      cameraWidth: NotchMetrics.cameraWidth(
+        auxiliaryTopLeftArea: screen.auxiliaryTopLeftArea,
+        auxiliaryTopRightArea: screen.auxiliaryTopRightArea
+      ),
       now: now,
       sleep: sleep
     )
@@ -197,6 +206,10 @@ final class NotchViewModel: ObservableObject {
     screenFrame = screen.frame
     hasPhysicalNotch = NotchMetrics.screenHasCameraHousing(screen)
     closedNotchSize = NotchMetrics.closedSize(for: screen)
+    cameraWidth = NotchMetrics.cameraWidth(
+      auxiliaryTopLeftArea: screen.auxiliaryTopLeftArea,
+      auxiliaryTopRightArea: screen.auxiliaryTopRightArea
+    )
     positionWindow()
   }
 
@@ -250,7 +263,9 @@ final class NotchViewModel: ObservableObject {
     hoverOpenTask = Task { [weak self, sleep] in
       await sleep(delay)
       guard !Task.isCancelled else { return }
-      self?.open()
+      // The dwell task runs outside any SwiftUI transaction — wrap the open
+      // so the frame morph rides the spring instead of snapping.
+      withAnimation(NotchAnimation.open) { self?.open() }
     }
   }
 

@@ -610,11 +610,8 @@ class PushToTalkManager: ObservableObject {
   private func isBlockedByUsageLimit() -> Bool {
     guard !APIKeyService.isByokActive, FloatingBarUsageLimiter.shared.isLimitReached else { return false }
     log("PushToTalkManager: PTT blocked — monthly free-tier chat limit reached")
-    // Surface the block at the notch too — the popup only reaches the main
-    // window, so a hold with no visible reaction reads as "PTT is broken".
     barState?.flashHint("Monthly free chat limit reached. Upgrade to keep using voice")
-    NotificationCenter.default.post(
-      name: .showUsageLimitPopup, object: nil, userInfo: ["reason": "ptt"])
+    NotificationCenter.default.post(name: .showUsageLimitPopup, object: nil, userInfo: ["reason": "ptt"])
     return true
   }
 

@@ -663,6 +663,12 @@ extension RealtimeHubController {
       providerTranscriptFinalized = !turnTranscript.trimmingCharacters(
         in: .whitespacesAndNewlines
       ).isEmpty
+      // Surface the settled question in the notch chat's live strip so the
+      // user message renders before the streaming reply (live partials stay
+      // hidden per the noise policy below).
+      if providerTranscriptFinalized {
+        FloatingControlBarManager.shared.barState?.liveVoiceUserText = turnTranscript
+      }
     } else {
       turnTranscript += text
     }
@@ -762,8 +768,15 @@ extension RealtimeHubController {
     if !text.isEmpty {
       assistantText += text
       // Mirror the streaming reply so the notch chat can render it live (the
-      // journaled exchange only lands on the timeline at turn end).
-      FloatingControlBarManager.shared.barState?.liveVoiceAssistantText = assistantText
+      // journaled exchange only lands on the timeline at turn end). If the
+      // transcript-final event was missed, backfill the question here so the
+      // user message always renders above the reply.
+      if let barState = FloatingControlBarManager.shared.barState {
+        if barState.liveVoiceUserText.isEmpty, !turnTranscript.isEmpty {
+          barState.liveVoiceUserText = turnTranscript
+        }
+        barState.liveVoiceAssistantText = assistantText
+      }
       if let turnID = VoiceTurnCoordinator.shared.activeTurnID,
         let providerIdentity = VoiceTurnCoordinator.shared.activeTurn?.providerEffectIdentity
       {

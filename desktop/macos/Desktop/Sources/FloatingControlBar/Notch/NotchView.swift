@@ -123,11 +123,22 @@ struct NotchView: View {
       withAnimation(NotchAnimation.close) { vm.close() }
     }
     // A voice answer streaming while closed opens the panel under the mouse
-    // so the reply lands in view (chat-first: the answer IS the chat).
+    // so the reply lands in view (chat-first: the answer IS the chat). The
+    // text mirror usually fires first (first token); the glow covers turns
+    // that produce audio before any text.
     .onChange(of: barState.isVoiceResponseGlowActive) { _, active in
-      guard active, vm.state == .closed, vm.screenFrame.contains(NSEvent.mouseLocation) else { return }
-      withAnimation(NotchAnimation.open) { vm.open(tab: .chat) }
+      guard active else { return }
+      openForVoiceAnswerIfClosed()
     }
+    .onChange(of: barState.liveVoiceAssistantText.isEmpty) { _, isEmpty in
+      guard !isEmpty else { return }
+      openForVoiceAnswerIfClosed()
+    }
+  }
+
+  private func openForVoiceAnswerIfClosed() {
+    guard vm.state == .closed, vm.screenFrame.contains(NSEvent.mouseLocation) else { return }
+    withAnimation(NotchAnimation.open) { vm.open(tab: .chat) }
   }
 
   @ViewBuilder

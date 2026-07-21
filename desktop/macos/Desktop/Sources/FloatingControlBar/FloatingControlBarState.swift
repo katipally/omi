@@ -408,6 +408,12 @@ class FloatingControlBarState: NSObject, ObservableObject {
   @Published var notchRevealProgress: CGFloat = 1
 
   private func applyVoiceProjection(_ projection: VoiceTurnUIProjection) {
+    // A new hold is a new turn: drop the previous turn's streamed reply so it
+    // can't flash under the fresh question.
+    if projection.isListening, !voiceProjection.isListening {
+      liveVoiceAssistantText = ""
+      liveVoiceUserText = ""
+    }
     voiceProjection = projection
     // Mirror the in-flight transcript for the notch chat's live strip; clear
     // the whole mirror once the voice presentation fully ends (by then the

@@ -101,6 +101,13 @@ enum FloatingConversationSurface: Equatable {
   }
 }
 
+/// Which surface the expanded notch chat shows. Voice stays push-to-talk and is
+/// never a segment here.
+enum NotchChatSurface: Equatable {
+  case chat
+  case history
+}
+
 /// Closing a visible surface is usually a user cancellation. A voice handoff is
 /// different: it only collapses the typed surface before routing the already
 /// admitted voice turn, so it must leave that turn's physical drivers and
@@ -239,6 +246,9 @@ class FloatingControlBarState: NSObject, ObservableObject {
   @Published var lastConversationActivityAt: Date? = nil
   @Published var activeAgentChatPillID: UUID? = nil
   @Published var conversationSurface: FloatingConversationSurface = .closed
+  /// Segmented Chat | History selection in the expanded notch. Resuming a session
+  /// loads it into the shared provider — no second store (INV-CHAT-1).
+  @Published var notchChatSurface: NotchChatSurface = .chat
   private var activeAIDraftKey = ChatDraftKey.floatingMain
   private var isRestoringAIDraft = false
   private var aiDraftRevision: UInt64 = 0
@@ -679,6 +689,37 @@ class FloatingControlBarState: NSObject, ObservableObject {
 
   func clearViewport() {
     chatViewport = FloatingChatViewport()
+    localAnswerOverride = nil
+    answerStreamToken = ""
+    displayedQuery = ""
+  }
+
+  /// Rebuild the viewport as message-id anchors for an already-loaded session so
+  /// a resumed conversation renders in the notch like the live one. Anchors only
+  /// — the transcript stays in `ChatProvider.messages` (INV-6, no second store).
+  func hydrateViewport(from provider: ChatProvider?) {
+    guard let provider else {
+      clearViewport()
+      return
+    }
+    var viewport = FloatingChatViewport()
+    var pendingQuestionId: String?
+    for message in provider.messages {
+      switch message.sender {
+      case .user:
+        pendingQuestionId = message.id
+      case .ai:
+        guard Self.messageHasAnswerContent(message) else { continue }
+        viewport.archivedExchanges.append(
+          FloatingChatExchangePair(
+            questionMessageId: pendingQuestionId,
+            answerMessageId: message.id
+          )
+        )
+        pendingQuestionId = nil
+      }
+    }
+    chatViewport = viewport
     localAnswerOverride = nil
     answerStreamToken = ""
     displayedQuery = ""

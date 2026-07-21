@@ -886,57 +886,23 @@ struct FloatingControlBarView: View {
   }
 
   @ViewBuilder
-  private func mainConversationContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-    // This is the expanded main-chat header, never the compact/hover row.
-    // It cannot depend on pill projection timing: the main transcript can
-    // render an accepted spawn receipt one update before the manager does.
-    VStack(alignment: .leading, spacing: OmiSpacing.sm) {
-      HStack(spacing: OmiSpacing.sm) {
-        Button(action: mainConversationBackAction) {
-          Image(systemName: "chevron.left")
-            .scaledFont(size: OmiType.body, weight: .semibold)
-            .foregroundColor(.white.opacity(0.82))
-            .frame(width: 36, height: 32)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(agentPills.pills.isEmpty ? "Close Omi Chat" : "Back to subagents")
-
-        Text("Omi Chat")
-          .scaledFont(size: OmiType.body, weight: .bold)
-          .foregroundColor(.white)
-          .lineLimit(1)
-
-        Spacer(minLength: 0)
-
-        if state.hasVisibleConversation {
-          escToClearHint
-        }
-      }
-      .padding(.horizontal, OmiSpacing.md)
-      .padding(.top, OmiSpacing.sm)
-
-      content()
-    }
+  private func mainConversationContainer<Content: View>(
+    @ViewBuilder content: @escaping () -> Content
+  ) -> some View {
+    // Expanded main-chat surface. The header + Chat|History segmenting live in
+    // NotchChatContainer; this seam only supplies the chat content + back action.
+    NotchChatContainer(
+      state: state,
+      chatProvider: floatingChatProvider,
+      backHelp: agentPills.pills.isEmpty ? "Close Omi Chat" : "Back to subagents",
+      onBack: mainConversationBackAction,
+      chatContent: content
+    )
   }
 
   private var activeAgentChatPill: AgentPill? {
     guard let id = state.activeAgentChatPillID else { return nil }
     return agentPills.pills.first { $0.id == id }
-  }
-
-  private var escToClearHint: some View {
-    HStack(spacing: OmiSpacing.xxs) {
-      Text("esc")
-        .scaledFont(size: OmiType.caption)
-        .foregroundColor(.secondary)
-        .frame(width: 30, height: 16)
-        .background(Color.white.opacity(0.1))
-        .cornerRadius(4)
-      Text("to clear")
-        .scaledFont(size: OmiType.caption)
-        .foregroundColor(.secondary)
-    }
   }
 
   private func setAgentSwitcherHovering(_ hovering: Bool) {

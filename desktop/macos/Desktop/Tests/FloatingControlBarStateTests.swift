@@ -287,6 +287,40 @@ final class FloatingControlBarStateTests: XCTestCase {
     XCTAssertEqual(state.currentAIMessage(from: provider)?.text, "Sure — updated.")
   }
 
+  func testNotchChatSurfaceDefaultsToChat() {
+    let state = FloatingControlBarState()
+    XCTAssertEqual(state.notchChatSurface, .chat)
+  }
+
+  /// Resuming a past session hydrates the notch viewport as message-id anchors
+  /// derived from the shared provider timeline — no second transcript store (INV-6).
+  func testHydrateViewportDerivesSessionAnchorsFromProviderMessages() {
+    let state = FloatingControlBarState()
+    let provider = ChatProvider()
+
+    let q1 = ChatMessage(id: "q1", clientTurnId: "t1", text: "First?", sender: .user, isSynced: true)
+    let a1 = ChatMessage(id: "a1", clientTurnId: "t1", text: "First answer.", sender: .ai, isSynced: true)
+    let q2 = ChatMessage(id: "q2", clientTurnId: "t2", text: "Second?", sender: .user, isSynced: true)
+    let a2 = ChatMessage(id: "a2", clientTurnId: "t2", text: "Second answer.", sender: .ai, isSynced: true)
+    provider.messages = [q1, a1, q2, a2]
+
+    state.hydrateViewport(from: provider)
+
+    XCTAssertEqual(state.chatViewport.archivedExchanges.count, 2)
+    XCTAssertEqual(state.chatViewport.archivedExchanges[0].questionMessageId, "q1")
+    XCTAssertEqual(state.chatViewport.archivedExchanges[0].answerMessageId, "a1")
+    XCTAssertEqual(state.chatViewport.archivedExchanges[1].questionMessageId, "q2")
+    XCTAssertEqual(state.chatViewport.archivedExchanges[1].answerMessageId, "a2")
+
+    let history = state.derivedChatHistory(from: provider)
+    XCTAssertEqual(history.map(\.aiMessage.id), ["a1", "a2"])
+    XCTAssertEqual(history.map(\.question), ["First?", "Second?"])
+
+    // Anchors reference the provider timeline; a provider edit is reflected without copying.
+    provider.messages[1].text = "First answer (edited)."
+    XCTAssertEqual(state.derivedChatHistory(from: provider).first?.aiMessage.text, "First answer (edited).")
+  }
+
   func testViewportProjectsOneTerminalSubagentRowForCurrentAndArchivedChat() throws {
     let state = FloatingControlBarState()
     let provider = ChatProvider()

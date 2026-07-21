@@ -28,8 +28,9 @@ enum DesktopBackendEnvironment {
 
     // Named/dev bundles route to the dev backend by default. Explicit launch
     // URLs still win below so local harnesses and intentionally-targeted tests
-    // remain possible.
-    if bundleIdentifier != AppBuild.productionBundleIdentifier {
+    // remain possible. The production family (stable + beta) never routes to
+    // development backends.
+    if !AppBuild.productionFamilyBundleIdentifiers.contains(bundleIdentifier) {
       return true
     }
 

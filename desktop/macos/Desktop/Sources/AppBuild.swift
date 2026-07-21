@@ -2,6 +2,13 @@ import Foundation
 
 enum AppBuild {
   static let productionBundleIdentifier = "com.omi.computer-macos"
+  static let betaProductionBundleIdentifier = "com.omi.computer-macos.beta"
+  /// Shipped customer builds. Stable and Beta are both production: they must
+  /// always route to production backends, never the development data plane.
+  static let productionFamilyBundleIdentifiers: Set<String> = [
+    productionBundleIdentifier,
+    betaProductionBundleIdentifier,
+  ]
   static let desktopDevBundleIdentifier = "com.omi.desktop-dev"
   static let externalPreviewBundleIdentifierPrefix = "com.omi.preview."
   static let externalPreviewMarkerInfoKey = "OMIExternalPreview"

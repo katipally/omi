@@ -2540,6 +2540,12 @@ class FloatingControlBarManager {
   }
 
   private var window: FloatingControlBarWindow?
+  /// The new per-display notch stack. While it runs, the legacy window above
+  /// stays nil and its call sites no-op.
+  private(set) var notchScreenManager: NotchScreenManager?
+  /// Bar state owned by the manager for the notch stack (the legacy window
+  /// owned its own copy; PTT/notification writers reach it via `barState`).
+  let notchState = FloatingControlBarState()
   /// Tracks whether the deferred notch reveal has happened this session for
   /// explicit opt-in contexts such as onboarding/demo/minimal mode.
   private var hasRevealedNotchThisSession = false
@@ -2758,99 +2764,23 @@ class FloatingControlBarManager {
     return value
   }
 
-  /// Create the floating bar window and wire up AppState bindings.
+  /// Start the notch: one panel per display, chat-first. The notch renders the
+  /// same timeline as the main chat window over the shared provider.
   func setup(appState: AppState, chatProvider: ChatProvider) {
-    guard window == nil else {
-      log("FloatingControlBarManager: setup() called but window already exists")
+    guard notchScreenManager == nil else {
+      log("FloatingControlBarManager: setup() called but notch is already running")
       return
     }
-    log("FloatingControlBarManager: setup() creating floating bar window")
-
-    let barWindow = FloatingControlBarWindow(
-      contentRect: .zero,
-      styleMask: [.borderless],
-      backing: .buffered,
-      defer: false
-    )
-
-    // Play/pause toggles transcription
-    barWindow.onPlayPause = { [weak appState] in
-      guard let appState = appState else { return }
-      appState.toggleTranscription()
-    }
-
-    // Typing lives in the main app — the bar's "chat" affordances jump there.
-    barWindow.onAskAI = {
-      (NSApp.delegate as? AppDelegate)?.openMainAppWindow()
-    }
-
-    // Hide persists the preference so bar stays hidden across restarts
-    barWindow.onHide = { [weak self] in
-      self?.isEnabled = false
-    }
+    log("FloatingControlBarManager: setup() starting notch screen manager")
 
     // Default floating/notch chat is a second view over the main chat provider.
     // That keeps streamed deltas, unsynced local IDs, and prompt history in one
     // canonical transcript instead of waiting for backend polling to reconcile.
     historyChatProvider = chatProvider
 
-    barWindow.onSendQuery = { [weak self, weak barWindow, weak chatProvider] message in
-      guard let self = self, let barWindow = barWindow, let provider = chatProvider else { return }
-      Task { @MainActor in
-        await self.withQueryTracer(query: message, fromVoice: false) {
-          await self.routeQuery(message, barWindow: barWindow, provider: provider, fromVoice: false)
-        }
-      }
-    }
-
-    barWindow.onRate = { [weak chatProvider] messageId, rating in
-      guard let provider = chatProvider else { return }
-      Task { @MainActor in
-        await provider.rateMessage(messageId, rating: rating)
-      }
-    }
-
-    barWindow.onShareLink = { [weak self, weak barWindow] in
-      guard let self, let barWindow = barWindow else { return nil }
-      // Share synced message ids from the viewport cursor over the shared provider.
-      let orderedUniqueMessageIds = barWindow.state.syncedShareMessageIds(
-        from: self.historyChatProvider
-      )
-      guard !orderedUniqueMessageIds.isEmpty else { return nil }
-      do {
-        let response = try await APIClient.shared.shareChatMessages(messageIds: orderedUniqueMessageIds)
-        return response.url
-      } catch {
-        log("Failed to get chat share link: \(error)")
-        return nil
-      }
-    }
-
-    // Observe recording state
-    recordingCancellable = appState.$isTranscribing
-      .combineLatest(appState.$isSavingConversation)
-      .receive(on: DispatchQueue.main)
-      .sink { [weak barWindow] isTranscribing, isSaving in
-        barWindow?.updateRecordingState(
-          isRecording: isTranscribing,
-          duration: Int(RecordingTimer.shared.duration),
-          isInitialising: isSaving
-        )
-      }
-
-    // Observe duration from RecordingTimer
-    durationCancellable = RecordingTimer.shared.$duration
-      .receive(on: DispatchQueue.main)
-      .sink { [weak barWindow, weak appState] duration in
-        guard let appState = appState else { return }
-        barWindow?.updateRecordingState(
-          isRecording: appState.isTranscribing,
-          duration: Int(duration),
-          isInitialising: appState.isSavingConversation
-        )
-      }
-
-    self.window = barWindow
+    let screenManager = NotchScreenManager()
+    screenManager.start(barState: notchState, chatProvider: chatProvider)
+    notchScreenManager = screenManager
 
     // Re-apply any in-flight snooze that survived app relaunch.
     if isSnoozed {
@@ -2858,7 +2788,6 @@ class FloatingControlBarManager {
     } else if snoozedUntil != nil {
       snoozedUntil = nil
     }
-
   }
 
   /// Whether the floating bar window is currently visible.
@@ -4238,7 +4167,7 @@ class FloatingControlBarManager {
 
   /// Access the bar state for PTT updates.
   var barState: FloatingControlBarState? {
-    return window?.state
+    return window?.state ?? notchState
   }
 
   /// Resize the floating bar for PTT state changes.

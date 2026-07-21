@@ -81,7 +81,7 @@ struct NotchView: View {
     // send can't look like an agent follow-up while routing to main chat.
     if vm.state == .open, vm.selectedTab == .chat, let chatProvider {
       NotchTrayView(chatProvider: chatProvider)
-        .frame(width: min(displayedSize.width - 24, 460))
+        .frame(width: min(displayedSize.width - 40, 420))
         .offset(y: displayedSize.height + NotchMetrics.trayGap)
         .transition(.move(edge: .top).combined(with: .opacity))
     }
@@ -127,8 +127,9 @@ struct NotchView: View {
         headerRow
         openContent(for: tab)
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-          .padding(.horizontal, 16)
-          .padding(.bottom, 12)
+          .padding(.horizontal, 20)
+          .padding(.top, 4)
+          .padding(.bottom, 14)
       }
       .clipped()
       .transition(contentTransition)
@@ -244,8 +245,9 @@ struct NotchView: View {
       }
       .frame(maxWidth: .infinity, alignment: .trailing)
     }
-    .padding(.horizontal, 16)
+    .padding(.horizontal, 22)
     .frame(height: vm.closedNotchSize.height)
+    .padding(.top, 2)
   }
 
   private func tabButton(_ tab: NotchTab) -> some View {

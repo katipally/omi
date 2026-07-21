@@ -119,6 +119,19 @@ final class NotchScreenManager {
     withAnimation(NotchAnimation.open) { target.vm.open(tab: tab) }
   }
 
+  /// Opens the agents tab drilled into a specific agent (timeline click,
+  /// agent-completion click-through).
+  func openAgent(pillID: UUID) {
+    let pointer = NSEvent.mouseLocation
+    let target =
+      panels.values.first { $0.vm.screenFrame.contains(pointer) }
+      ?? panels[CGMainDisplayID()]
+      ?? panels.values.first
+    guard let target else { return }
+    target.vm.openAgentPillID = pillID
+    withAnimation(NotchAnimation.open) { target.vm.open(tab: .agents) }
+  }
+
   func closeAll() {
     for (_, panel) in panels where panel.vm.state == .open {
       withAnimation(NotchAnimation.close) { panel.vm.close() }

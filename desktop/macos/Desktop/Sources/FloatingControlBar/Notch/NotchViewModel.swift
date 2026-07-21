@@ -22,6 +22,8 @@ final class NotchViewModel: ObservableObject {
   /// answer, capped at half the screen. Deliberately NOT part of
   /// `NotchPresentation` — it rides its own animation timeline.
   @Published var chatBodyHeight: CGFloat?
+  /// Agent drill-in within the agents tab (nil = the list).
+  @Published var openAgentPillID: UUID?
   /// True while something must stay on screen regardless of the pointer.
   var holdOpen = false
 
@@ -227,6 +229,7 @@ final class NotchViewModel: ObservableObject {
     guard state != .closed else { return }
     state = .closed
     openedAt = nil
+    openAgentPillID = nil
     // Persist the settled chat height to seed the next launch's first open.
     if let chatBodyHeight {
       defaults.set(Double(chatBodyHeight), forKey: Self.chatBodyHeightKey)

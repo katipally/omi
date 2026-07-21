@@ -17,12 +17,14 @@ struct NotchView: View {
   /// Single value that both the panel size and the rendered content derive
   /// from. Priority: open > listening > thinking > hint > notification > idle.
   private var presentation: NotchPresentation {
-    if vm.state == .open { return .open(vm.selectedTab) }
-    if barState.isVoiceListening { return .listening }
-    if barState.isThinking { return .thinking }
-    if !barState.pttHintText.isEmpty { return .hint(barState.pttHintText) }
-    if let notification = barState.currentNotification { return .notification(notification.id) }
-    return .idle
+    NotchPresentation.derive(
+      isOpen: vm.state == .open,
+      tab: vm.selectedTab,
+      isVoiceListening: barState.isVoiceListening,
+      isThinking: barState.isThinking,
+      hintText: barState.pttHintText,
+      notificationID: barState.currentNotification?.id
+    )
   }
 
   // MARK: - Animations (two isolated timelines)
@@ -75,7 +77,9 @@ struct NotchView: View {
   /// the displayed height, so it rides both animation timelines with the body.
   @ViewBuilder
   private var tray: some View {
-    if vm.state == .open, let chatProvider {
+    // The composer is bound to main chat; it hides on the agents tab so a
+    // send can't look like an agent follow-up while routing to main chat.
+    if vm.state == .open, vm.selectedTab == .chat, let chatProvider {
       NotchTrayView(chatProvider: chatProvider)
         .frame(width: min(displayedSize.width - 24, 460))
         .offset(y: displayedSize.height + NotchMetrics.trayGap)
@@ -107,6 +111,12 @@ struct NotchView: View {
         guard vm.state == .open else { return }
         withAnimation(NotchAnimation.close) { vm.close() }
       }
+      // A voice answer streaming while closed opens the panel under the mouse
+      // so the reply lands in view (chat-first: the answer IS the chat).
+      .onChange(of: barState.isVoiceResponseGlowActive) { _, active in
+        guard active, vm.state == .closed, vm.screenFrame.contains(NSEvent.mouseLocation) else { return }
+        withAnimation(NotchAnimation.open) { vm.open(tab: .chat) }
+      }
   }
 
   @ViewBuilder
@@ -122,13 +132,66 @@ struct NotchView: View {
       }
       .clipped()
       .transition(contentTransition)
-    case .listening, .thinking, .hint, .notification:
-      // Voice + notification chrome lands in a later phase; until then these
-      // presentations render the sized black surface.
-      Color.black.transition(contentTransition)
+    case .listening:
+      VStack(spacing: 2) {
+        voiceChrome {
+          VoiceWaveformBars(isActive: true)
+            .scaleEffect(0.72)
+            .frame(width: 28, height: 15)
+        }
+        Text(barState.displayedQuery.isEmpty ? "Listening…" : barState.displayedQuery)
+          .font(.system(size: 11, weight: .medium))
+          .foregroundStyle(.white.opacity(0.7))
+          .lineLimit(1)
+          .truncationMode(.head)
+          .padding(.horizontal, 14)
+      }
+      .transition(contentTransition)
+    case .thinking:
+      voiceChrome {
+        OmiThinkingMark()
+          .frame(width: 22, height: 22)
+      }
+      .transition(contentTransition)
+    case .hint(let text):
+      VStack(spacing: 2) {
+        closedChrome
+        Text(text)
+          .font(.system(size: 11, weight: .medium))
+          .foregroundStyle(.white.opacity(0.75))
+          .lineLimit(1)
+          .padding(.horizontal, 14)
+      }
+      .transition(contentTransition)
+    case .notification(let id):
+      VStack(spacing: NotchMetrics.notificationSpacing) {
+        closedChrome
+        if let notification = barState.currentNotification, notification.id == id {
+          NotchNotificationCard(notification: notification)
+        }
+      }
+      .transition(contentTransition)
     case .idle:
       closedChrome
     }
+  }
+
+  /// Compact voice chrome: the state indicator replaces the logo in the left
+  /// lobe; the camera void and gear lobe stay put.
+  private func voiceChrome<Indicator: View>(@ViewBuilder indicator: () -> Indicator) -> some View {
+    HStack(spacing: 0) {
+      indicator()
+        .frame(
+          width: (displayedSize.width - vm.closedNotchSize.width) / 2 + NotchMetrics.closedSideWidth,
+          height: vm.closedNotchSize.height)
+      Color.clear
+        .frame(width: max(0, vm.closedNotchSize.width - NotchMetrics.closedSideWidth * 2))
+      settingsButton
+        .frame(
+          width: (displayedSize.width - vm.closedNotchSize.width) / 2 + NotchMetrics.closedSideWidth,
+          height: vm.closedNotchSize.height)
+    }
+    .frame(height: vm.closedNotchSize.height)
   }
 
   // MARK: - Closed chrome (always-visible Omi identity)
@@ -221,8 +284,7 @@ struct NotchView: View {
         Color.clear
       }
     case .agents:
-      // Agents list lands in phase 4.
-      Color.clear
+      NotchAgentsView(vm: vm, manager: AgentPillsManager.shared)
     }
   }
 
@@ -245,7 +307,6 @@ struct NotchView: View {
   }
 
   private func openSettings() {
-    NotificationCenter.default.post(name: .navigateToFloatingBarSettings, object: nil)
-    (NSApp.delegate as? AppDelegate)?.openMainAppWindow()
+    MainWindowReveal.openSettings()
   }
 }

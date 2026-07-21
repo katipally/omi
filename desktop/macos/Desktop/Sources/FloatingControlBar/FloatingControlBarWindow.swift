@@ -2572,7 +2572,7 @@ class FloatingControlBarManager {
   }
 
   func openAgentChatFromTimeline(ref: AgentTimelineRef, completion: ((Bool) -> Void)? = nil) {
-    guard let window else {
+    guard let notchScreenManager else {
       completion?(false)
       return
     }
@@ -2608,13 +2608,7 @@ class FloatingControlBarManager {
         return
       }
       AgentPillsManager.shared.markViewed(pillID: pillID)
-      window.state.setNotchHoverMenuOpen(false)
-      window.makeKeyAndOrderFront(nil)
-      OmiMotion.withGated(.easeOut(duration: 0.10)) {
-        window.state.present(.agent(pillID))
-        window.state.isAILoading = false
-      }
-      window.resizeForActiveAgentChatPublic(pillID: pillID, animated: true)
+      notchScreenManager.openAgent(pillID: pillID)
       completion?(true)
     }
   }

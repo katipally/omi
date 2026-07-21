@@ -42,4 +42,23 @@ enum NotchPresentation: Equatable {
     case .listening, .thinking, .hint, .idle: return false
     }
   }
+
+  /// The priority ladder: a user-opened panel always wins, voice states beat
+  /// passive surfaces, and a notification only shows on an otherwise idle
+  /// notch. Pure so the ordering is unit-testable.
+  static func derive(
+    isOpen: Bool,
+    tab: NotchTab,
+    isVoiceListening: Bool,
+    isThinking: Bool,
+    hintText: String,
+    notificationID: UUID?
+  ) -> NotchPresentation {
+    if isOpen { return .open(tab) }
+    if isVoiceListening { return .listening }
+    if isThinking { return .thinking }
+    if !hintText.isEmpty { return .hint(hintText) }
+    if let notificationID { return .notification(notificationID) }
+    return .idle
+  }
 }

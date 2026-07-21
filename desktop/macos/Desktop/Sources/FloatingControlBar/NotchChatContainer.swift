@@ -14,23 +14,26 @@ struct NotchChatContainer<ChatContent: View>: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: OmiSpacing.sm) {
-      HStack(spacing: OmiSpacing.sm) {
-        Button(action: onBack) {
-          Image(systemName: "chevron.left")
-            .scaledFont(size: OmiType.body, weight: .semibold)
-            .foregroundColor(.white.opacity(0.82))
-            .frame(width: 36, height: 32)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(backHelp)
-
+      ZStack {
         NotchSegmentedHeader(surface: $state.notchChatSurface)
+          .frame(maxWidth: .infinity, alignment: .center)
 
-        Spacer(minLength: 0)
+        HStack(spacing: 0) {
+          Button(action: onBack) {
+            Image(systemName: "chevron.left")
+              .scaledFont(size: OmiType.body, weight: .semibold)
+              .foregroundColor(.white.opacity(0.82))
+              .frame(width: 32, height: 30)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .help(backHelp)
 
-        if state.notchChatSurface == .chat && state.hasVisibleConversation {
-          escToClearHint
+          Spacer(minLength: 0)
+
+          if state.notchChatSurface == .chat && state.hasVisibleConversation {
+            escToClearHint
+          }
         }
       }
       .padding(.horizontal, OmiSpacing.md)

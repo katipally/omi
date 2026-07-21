@@ -2,60 +2,59 @@ import AppKit
 import OmiTheme
 import SwiftUI
 
-/// Chat | History segmented control for the expanded notch header. The Omi mark
-/// is the Chat segment; History browses past sessions. Voice stays push-to-talk
-/// and is never a segment here. White/neutral only (INV-UI-1).
+/// Top tab bar for the expanded notch: Chat and History, rendered as icon+label
+/// pills with a sliding selection indicator. The Omi mark is the Chat tab.
+/// Voice stays push-to-talk and is never a tab here. White/neutral only.
 struct NotchSegmentedHeader: View {
   @Binding var surface: NotchChatSurface
-  @Namespace private var pill
+  @Namespace private var tabPill
 
   var body: some View {
-    HStack(spacing: OmiSpacing.xxs) {
-      segment(.chat) {
-        HStack(spacing: OmiSpacing.xs) {
-          OmiLogoMark()
-            .frame(width: 15, height: 15)
-          Text("Chat")
-        }
-      }
-      segment(.history) {
-        HStack(spacing: OmiSpacing.xs) {
-          Image(systemName: "clock.arrow.circlepath")
-            .scaledFont(size: OmiType.caption, weight: .semibold)
-          Text("History")
-        }
+    HStack(spacing: OmiSpacing.lg) {
+      tab(.chat, label: "Chat", shortcut: "1") { OmiLogoMark().frame(width: 14, height: 14) }
+      tab(.history, label: "History", shortcut: "2") {
+        Image(systemName: "clock.arrow.circlepath")
+          .font(.system(size: 12, weight: .semibold))
       }
     }
-    .padding(OmiSpacing.hairline)
-    .background(Color.white.opacity(0.06))
-    .clipShape(Capsule())
+    .padding(.top, 2)
   }
 
   @ViewBuilder
-  private func segment<Label: View>(_ value: NotchChatSurface, @ViewBuilder label: () -> Label) -> some View {
+  private func tab<Icon: View>(
+    _ value: NotchChatSurface,
+    label: String,
+    shortcut: KeyEquivalent,
+    @ViewBuilder icon: () -> Icon
+  ) -> some View {
     let selected = surface == value
     Button {
       guard surface != value else { return }
-      OmiMotion.withGated(.spring(response: 0.32, dampingFraction: 0.82)) {
+      OmiMotion.withGated(.spring(response: 0.34, dampingFraction: 0.82)) {
         surface = value
       }
     } label: {
-      label()
-        .scaledFont(size: OmiType.caption, weight: .semibold)
-        .foregroundColor(selected ? .white : .white.opacity(0.55))
-        .padding(.horizontal, OmiSpacing.sm)
-        .padding(.vertical, OmiSpacing.xs)
-        .background {
-          if selected {
-            Capsule()
-              .fill(Color.white.opacity(0.12))
-              .matchedGeometryEffect(id: "pill", in: pill)
-          }
+      HStack(spacing: OmiSpacing.xs) {
+        icon()
+        Text(label)
+          .font(.system(size: 12, weight: .semibold))
+      }
+      .foregroundColor(selected ? .white : .white.opacity(0.55))
+      .padding(.horizontal, OmiSpacing.sm)
+      .padding(.vertical, OmiSpacing.xs)
+      .background {
+        if selected {
+          RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Color.white.opacity(0.12))
+            .matchedGeometryEffect(id: "tabPill", in: tabPill)
         }
-        .contentShape(Capsule())
+      }
+      .scaleEffect(selected ? 1.05 : 1.0)
+      .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .accessibilityLabel(value == .chat ? "Chat" : "History")
+    .keyboardShortcut(shortcut, modifiers: .command)
+    .accessibilityLabel(label)
     .accessibilityAddTraits(selected ? .isSelected : [])
   }
 }
@@ -71,14 +70,13 @@ struct OmiLogoMark: View {
         .aspectRatio(contentMode: .fit)
         .foregroundColor(.white)
     } else {
-      Image(systemName: "bubble.left.and.bubble.right.fill")
+      Image(systemName: "message.fill")
         .foregroundColor(.white)
     }
   }
 
   private static let markImage: NSImage? = {
-    for name in ["omi_notch_logo", "omi_text_logo"] {
-      let ext = name.hasSuffix("logo") && name.contains("notch") ? "svg" : "png"
+    for (name, ext) in [("omi_notch_logo", "svg"), ("omi_text_logo", "png")] {
       if let url = Bundle.resourceBundle.url(forResource: name, withExtension: ext),
         let image = NSImage(contentsOf: url)
       {

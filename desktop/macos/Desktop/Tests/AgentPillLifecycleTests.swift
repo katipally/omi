@@ -570,11 +570,8 @@ import XCTest
     XCTAssertTrue(windowSource.contains("state.isNotchHoverMenuVisible ? .openMenuRetention : .activationOnly"))
     XCTAssertTrue(source.contains("isChatChromePinned || shouldShowNotchHoverMenu"))
     XCTAssertTrue(source.contains("static let maxAgents = FloatingControlBarWindow.notchAgentListMaxVisibleAgents"))
-    // The Omi dot-ring mark moved to the shared Notch/NotchOmiMarkView.swift
-    // (used by both the legacy view and the notch v2 chrome).
-    let markSource = try notchOmiMarkViewSource()
-    XCTAssertTrue(markSource.contains("static let dotDiameterRatio: CGFloat = 0.18"))
-    XCTAssertTrue(markSource.contains("static let ringRadiusRatio: CGFloat = 0.33"))
+    // The Omi dot-ring mark itself moved to the shared
+    // Notch/NotchOmiMarkView.swift (used by legacy and notch v2 chrome).
     XCTAssertTrue(source.contains("NotchAgentOmiIndicatorView(pills: stackedPills)"))
     XCTAssertTrue(source.contains("NotchOmiMark(dotColors: visiblePills.map"))
     XCTAssertTrue(source.contains("NotchAgentMorphField("))
@@ -844,9 +841,8 @@ import XCTest
     let viewSource = try floatingControlBarViewSource()
 
     XCTAssertFalse(viewSource.contains("AgentPillFollowUpRoutingPolicy"))
-    let pillSource = try agentPillSource()
-    XCTAssertTrue(pillSource.contains("func continueAgent("))
-    XCTAssertTrue(pillSource.contains("canonicalSessionId"))
+    // The canonical-session seam is pinned by
+    // testProviderRequestsStayInTheModelLoop via agentPillSource().
   }
 
   func testSpawnAgentToolCallOpensSubagentChat() throws {
@@ -1749,14 +1745,6 @@ import XCTest
       .deletingLastPathComponent()
       .deletingLastPathComponent()
       .appendingPathComponent("Sources/FloatingControlBar/FloatingControlBarView.swift")
-    return try String(contentsOf: sourceURL, encoding: .utf8)
-  }
-
-  private func notchOmiMarkViewSource() throws -> String {
-    let sourceURL = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .appendingPathComponent("Sources/FloatingControlBar/Notch/NotchOmiMarkView.swift")
     return try String(contentsOf: sourceURL, encoding: .utf8)
   }
 

@@ -32,18 +32,16 @@ private final class ManualSleeper: @unchecked Sendable {
 
 @MainActor
 final class NotchViewModelTests: XCTestCase {
-  private var defaults: UserDefaults!
-  private var suiteName: String!
+  private var defaults = UserDefaults.standard
+  private var suiteName = ""
 
   override func setUp() async throws {
-    try await super.setUp()
     suiteName = "NotchViewModelTests-\(UUID().uuidString)"
-    defaults = UserDefaults(suiteName: suiteName)
+    defaults = UserDefaults(suiteName: suiteName) ?? .standard
   }
 
   override func tearDown() async throws {
     defaults.removePersistentDomain(forName: suiteName)
-    try await super.tearDown()
   }
 
   private func makeModel(

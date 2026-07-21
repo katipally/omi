@@ -237,6 +237,14 @@ struct NotchView: View {
       } label: {
         NotchOmiMark()
           .frame(width: 24, height: 24)
+          // Recording dot: transcription is running (legacy bar indicator).
+          .overlay(alignment: .topTrailing) {
+            if barState.isRecording {
+              Circle()
+                .fill(Color.red.opacity(0.9))
+                .frame(width: 5, height: 5)
+            }
+          }
           .frame(
             width: NotchMetrics.closedSideWidth, height: vm.closedNotchSize.height,
             alignment: .trailing

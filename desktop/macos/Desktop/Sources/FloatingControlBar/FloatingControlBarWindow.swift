@@ -2770,6 +2770,14 @@ class FloatingControlBarManager {
     // canonical transcript instead of waiting for backend polling to reconcile.
     historyChatProvider = chatProvider
 
+    // The closed chrome shows a recording dot while transcription runs (the
+    // legacy bar's recording indicator, retained on the notch).
+    recordingCancellable = appState.$isTranscribing
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] isTranscribing in
+        self?.notchState.isRecording = isTranscribing
+      }
+
     let screenManager = NotchScreenManager()
     screenManager.start(barState: notchState, chatProvider: chatProvider)
     notchScreenManager = screenManager

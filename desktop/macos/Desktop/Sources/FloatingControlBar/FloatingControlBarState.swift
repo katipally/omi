@@ -381,6 +381,22 @@ class FloatingControlBarState: NSObject, ObservableObject {
   /// True only when the notch-mode setting is enabled and the current display
   /// exposes a real camera housing safe area. External displays keep old pill UI.
   @Published var usesNotchIsland: Bool = false
+
+  /// One-shot notch hint outside the voice projection (e.g. PTT blocked by
+  /// the usage limit). The notch's hint presentation falls back to this when
+  /// the projection-derived hint is empty.
+  @Published var transientHintText: String = ""
+  private var transientHintClearTask: Task<Void, Never>?
+
+  func flashHint(_ text: String, for seconds: TimeInterval = 3) {
+    transientHintText = text
+    transientHintClearTask?.cancel()
+    transientHintClearTask = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(seconds))
+      guard !Task.isCancelled else { return }
+      self?.transientHintText = ""
+    }
+  }
   @Published var notchRevealProgress: CGFloat = 1
 
   private func applyVoiceProjection(_ projection: VoiceTurnUIProjection) {

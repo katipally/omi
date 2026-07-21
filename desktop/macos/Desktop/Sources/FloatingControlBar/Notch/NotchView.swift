@@ -22,7 +22,7 @@ struct NotchView: View {
       tab: vm.selectedTab,
       isVoiceListening: barState.isVoiceListening,
       isThinking: barState.isThinking,
-      hintText: barState.pttHintText,
+      hintText: barState.pttHintText.isEmpty ? barState.transientHintText : barState.pttHintText,
       notificationID: barState.currentNotification?.id
     )
   }

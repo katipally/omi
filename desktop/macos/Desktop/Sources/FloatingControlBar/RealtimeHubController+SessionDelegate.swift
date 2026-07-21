@@ -761,6 +761,9 @@ extension RealtimeHubController {
     else { return }
     if !text.isEmpty {
       assistantText += text
+      // Mirror the streaming reply so the notch chat can render it live (the
+      // journaled exchange only lands on the timeline at turn end).
+      FloatingControlBarManager.shared.barState?.liveVoiceAssistantText = assistantText
       if let turnID = VoiceTurnCoordinator.shared.activeTurnID,
         let providerIdentity = VoiceTurnCoordinator.shared.activeTurn?.providerEffectIdentity
       {

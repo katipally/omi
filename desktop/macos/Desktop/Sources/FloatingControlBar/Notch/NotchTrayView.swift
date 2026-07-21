@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 /// response streams. Bound to the shared provider: one draft, one timeline.
 struct NotchTrayView: View {
   @ObservedObject var chatProvider: ChatProvider
+  @EnvironmentObject var barState: FloatingControlBarState
 
   @FocusState private var inputFocused: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -13,7 +14,9 @@ struct NotchTrayView: View {
 
   var body: some View {
     Group {
-      if chatProvider.isSending {
+      if barState.isVoiceListening {
+        listeningPill
+      } else if chatProvider.isSending {
         stopPill
       } else {
         composer
@@ -21,6 +24,29 @@ struct NotchTrayView: View {
     }
     .frame(maxWidth: .infinity)
     .animation(.snappy, value: chatProvider.isSending)
+    .animation(.snappy, value: barState.isVoiceListening)
+  }
+
+  // MARK: - Listening (the composer becomes the live waveform during PTT)
+
+  private var listeningPill: some View {
+    HStack(spacing: 10) {
+      VoiceWaveformBars(isActive: true)
+      Text(barState.liveVoiceUserText.isEmpty ? "Listening…" : barState.liveVoiceUserText)
+        .font(.system(size: 12))
+        .foregroundStyle(.white.opacity(barState.liveVoiceUserText.isEmpty ? 0.5 : 0.85))
+        .lineLimit(1)
+        .truncationMode(.head)
+      Spacer(minLength: 0)
+      Image(systemName: "mic.fill")
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(Color(red: 1.0, green: 0.45, blue: 0.45))
+        .frame(width: 26, height: 26)
+    }
+    .padding(.leading, 16)
+    .padding(.trailing, 6)
+    .padding(.vertical, 9)
+    .trayGlass()
   }
 
   // MARK: - Composer

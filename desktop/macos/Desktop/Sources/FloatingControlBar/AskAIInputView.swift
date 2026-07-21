@@ -102,8 +102,18 @@ struct AskAIInputView: View {
         .disabled(!canSend)
         .buttonStyle(.plain)
       }
-      .padding(.horizontal, OmiSpacing.lg)
-      .padding(.vertical, OmiSpacing.md)
+      .padding(.horizontal, OmiSpacing.md)
+      .padding(.vertical, OmiSpacing.xs)
+      .background(
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+          .fill(Color.white.opacity(0.06))
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+          .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+      )
+      .padding(.horizontal, OmiSpacing.md)
+      .padding(.bottom, OmiSpacing.md)
       .frame(maxWidth: .infinity)
     }
     .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted, perform: handleAttachmentDrop)

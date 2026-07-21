@@ -142,6 +142,43 @@ final class NotchScreenManager {
     panels.values.contains { $0.vm.state == .open }
   }
 
+  /// True while an open panel's composer (or any text field inside it) holds
+  /// keyboard focus. Automation's proxy for "the conversation is focused".
+  var anyPanelKeyboardFocused: Bool {
+    panels.values.contains { $0.window.firstResponder is NSTextView }
+  }
+
+  /// The frame of the panel `openPrimary` would target. nil before any panel exists.
+  var primaryPanelFrame: NSRect? {
+    let pointer = NSEvent.mouseLocation
+    let target =
+      panels.values.first { $0.vm.screenFrame.contains(pointer) }
+      ?? panels[CGMainDisplayID()]
+      ?? panels.values.first
+    return target?.window.frame
+  }
+
+  /// Order every panel back on screen (show / clearing snooze).
+  func showAll() {
+    for (_, panel) in panels { panel.window.orderFrontRegardless() }
+  }
+
+  /// Order every panel off screen (hide / snooze / disable).
+  func hideAll() {
+    for (_, panel) in panels {
+      panel.vm.close()
+      panel.window.orderOut(nil)
+    }
+  }
+
+  /// Clear the agents-tab drill-in on any panel showing this pill, so a
+  /// dismissed pill doesn't leave the agents tab pointed at a removed agent.
+  func clearAgentDrillIn(pillID: UUID) {
+    for (_, panel) in panels where panel.vm.openAgentPillID == pillID {
+      panel.vm.openAgentPillID = nil
+    }
+  }
+
   // MARK: - Panel lifecycle
 
   /// Display hot-plug/sleep fires bursts of change notifications; settle first.

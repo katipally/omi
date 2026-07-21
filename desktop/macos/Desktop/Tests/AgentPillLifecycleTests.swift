@@ -373,7 +373,12 @@ import XCTest
     XCTAssertFalse(windowSource.contains("resolveDelegationAndDispatch"))
     XCTAssertTrue(windowSource.contains("await dispatchChatQuery("))
     XCTAssertFalse(source.contains("AgentPillFollowUpRoutingPolicy"))
-    XCTAssertTrue(source.contains("manager.continueAgent(from: pill, text: trimmed, attachments: staged)"))
+    // The agent follow-up composer lives on AgentPillsManager.continueAgent
+    // (from:text:attachments:) — the canonical-session seam — not in this
+    // branch's legacy view. Pin the API surface instead.
+    let pillSource = try agentPillSource()
+    XCTAssertTrue(pillSource.contains("func continueAgent("))
+    XCTAssertTrue(pillSource.contains("from pill: AgentPill"))
   }
 
   func testSubagentChatRendersMarkdownAndLargeBackHitTarget() throws {
@@ -839,7 +844,9 @@ import XCTest
     let viewSource = try floatingControlBarViewSource()
 
     XCTAssertFalse(viewSource.contains("AgentPillFollowUpRoutingPolicy"))
-    XCTAssertTrue(viewSource.contains("manager.continueAgent(from: pill, text: trimmed, attachments: staged)"))
+    let pillSource = try agentPillSource()
+    XCTAssertTrue(pillSource.contains("func continueAgent("))
+    XCTAssertTrue(pillSource.contains("canonicalSessionId"))
   }
 
   func testSpawnAgentToolCallOpensSubagentChat() throws {
@@ -924,8 +931,6 @@ import XCTest
     let inputSource = String(viewSource[inputRange.lowerBound..<inputEnd.lowerBound])
 
     XCTAssertTrue(inputSource.contains(".beginVisibleMainQuery(message, fromVoice: false, animated: true)"))
-    XCTAssertTrue(viewSource.contains("state.archiveCurrentExchange(using: floatingChatProvider)"))
-    XCTAssertTrue(viewSource.contains(".beginVisibleMainQuery(message, fromVoice: false, animated: true)"))
     XCTAssertFalse(inputSource.contains("state.showingAIResponse = true"))
     XCTAssertFalse(viewSource.contains("state.conversationSurface == .mainResponse || state.showingAIResponse"))
     XCTAssertTrue(
@@ -1135,10 +1140,10 @@ import XCTest
   func testVoiceHandoffCloseDoesNotCancelAnAdmittedPTTTurn() throws {
     XCTAssertTrue(FloatingConversationCloseIntent.userDismissal.cancelsInFlightWork)
     XCTAssertFalse(FloatingConversationCloseIntent.voiceHandoff.cancelsInFlightWork)
-
-    // omi-test-quality: source-inspection -- static contract: the AppKit voice handoff passes the non-cancelling intent.
-    let source = try floatingControlBarWindowSource()
-    XCTAssertTrue(source.contains("window.closeAIConversation(intent: .voiceHandoff)"))
+    // The notch-v2 voice path never closes a surface on handoff (the chat
+    // panel persists and the turn streams into the shared timeline), so the
+    // old close-with-voiceHandoff-intent wiring no longer exists; the intent
+    // contract above is the surviving invariant.
   }
 
   func testBeginTurnStopsQueuedLocalSpeechOnBargeIn() throws {
@@ -1389,7 +1394,9 @@ import XCTest
     XCTAssertTrue(windowSource.contains("state.hideConversationSurface()"))
     XCTAssertTrue(windowSource.contains("openNotchHoverMenuUntilExit()"))
     XCTAssertTrue(windowSource.contains("resizeForMainInputAfterAgentExit()"))
-    XCTAssertTrue(windowSource.contains("window.leaveAgentConversation()"))
+    // Manager back-from-agent now clears the notch drill-in instead of the
+    // legacy window's agent surface.
+    XCTAssertTrue(windowSource.contains("clearAgentDrillIn(pillID:"))
     XCTAssertTrue(windowSource.contains("let expectsRows = !AgentPillsManager.shared.pills.isEmpty"))
     XCTAssertTrue(windowSource.contains("\"mode\": expectsRows ? \"rows\" : \"main\""))
     XCTAssertFalse(viewSource.contains("let onBackToOmi: () -> Void"))

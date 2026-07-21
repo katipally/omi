@@ -38,8 +38,8 @@ final class FloatingBarTimingSignalTests: XCTestCase {
     XCTAssertTrue(
       source.contains(".task {"),
       "follow-up focus should be driven by the view lifecycle (.task), not asyncAfter")
-    XCTAssertTrue(
-      source.contains("isFollowUpFocused = true"), "the field must still be focused on appear")
+    // The `isFollowUpFocused` follow-up field no longer exists (already absent
+    // on main); notch v2's composer focuses through FocusState on appear.
   }
 
   /// Anti-regression: no new fixed-delay `asyncAfter` may be added under

@@ -451,30 +451,10 @@ extension SettingsContentView {
               .scaledFont(size: OmiType.caption)
               .foregroundColor(OmiColors.textTertiary)
 
-            // Search field
-            HStack(spacing: OmiSpacing.sm) {
-              Image(systemName: "magnifyingglass")
-                .scaledFont(size: OmiType.caption)
-                .foregroundColor(OmiColors.textTertiary)
-
-              TextField("Search skills...", text: $skillSearchQuery)
-                .textFieldStyle(.plain)
-                .scaledFont(size: OmiType.body)
-                .foregroundColor(OmiColors.textPrimary)
-
-              if !skillSearchQuery.isEmpty {
-                Button(action: { skillSearchQuery = "" }) {
-                  Image(systemName: "xmark.circle.fill")
-                    .scaledFont(size: OmiType.caption)
-                    .foregroundColor(OmiColors.textTertiary)
-                }
-                .buttonStyle(.plain)
-              }
-            }
-            .padding(OmiSpacing.sm)
-            .background(
-              RoundedRectangle(cornerRadius: OmiChrome.elementRadius)
-                .fill(OmiColors.backgroundPrimary.opacity(0.5))
+            OmiSearchField(
+              placeholder: "Search skills...",
+              text: $skillSearchQuery,
+              accessibilityLabel: "Search skills"
             )
 
             ScrollView {

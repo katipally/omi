@@ -5,14 +5,18 @@ enum HomeStageMode: Equatable {
   case hub
   case chat
   case connect
+  /// The on-open landing: a centered hero (rotating mark + composer) shown
+  /// before the transcript. Same conversation underneath — the first send
+  /// transitions to `.chat` and continues the one shared thread.
+  case landing
 
   /// Whether the user-facing collapse catchers (click-outside + Esc) mount.
   /// Only a panel that can collapse to a *different* resting surface gets a
-  /// catcher. The hub is the base surface, never an overlay: mounting a
-  /// catcher over hub-with-history would invert the gesture and make a stray
-  /// click or Esc *open* the chat.
+  /// catcher. `hub` and `landing` are base surfaces, never overlays: mounting
+  /// a catcher over them would invert the gesture and make a stray click or
+  /// Esc *open* the chat.
   static func collapseCatcherActive(mode: HomeStageMode, resting: HomeStageMode) -> Bool {
-    mode != resting && mode != .hub
+    mode != resting && mode != .hub && mode != .landing
   }
 
   func topPadding(hub: CGFloat) -> CGFloat {
@@ -20,6 +24,8 @@ enum HomeStageMode: Equatable {
     case .hub: return hub
     case .chat: return 0
     case .connect: return OmiSpacing.lg
+    // The landing centers itself in the stage, so it wants no top bias.
+    case .landing: return 0
     }
   }
 
@@ -28,6 +34,7 @@ enum HomeStageMode: Equatable {
     case .hub: return "hub"
     case .chat: return "chat"
     case .connect: return "connect"
+    case .landing: return "landing"
     }
   }
 }
@@ -99,5 +106,17 @@ extension AnyTransition {
       active: HomeStageDropModifier(offsetY: 10, scale: 1, opacity: 0),
       identity: HomeStageDropModifier(offsetY: 0, scale: 1, opacity: 1)
     )
+  }
+}
+
+extension View {
+  /// Staggered fade + slight upward drift for a landing-hero element. The
+  /// caller varies `delay` per element so they settle in sequence. Gates off
+  /// under Reduce Motion.
+  package func homeLandingReveal(_ shown: Bool, delay: Double) -> some View {
+    self
+      .opacity(shown ? 1 : 0)
+      .offset(y: shown ? 0 : 10)
+      .animation(OmiMotion.gated(.easeOut(duration: 0.45).delay(delay)), value: shown)
   }
 }

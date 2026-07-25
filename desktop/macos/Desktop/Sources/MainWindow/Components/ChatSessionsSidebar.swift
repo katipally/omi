@@ -141,31 +141,11 @@ struct ChatSessionsSidebar: View {
   // MARK: - Search Field
 
   private var searchField: some View {
-    HStack(spacing: OmiSpacing.sm) {
-      Image(systemName: "magnifyingglass")
-        .scaledFont(size: OmiType.caption)
-        .foregroundColor(OmiColors.textTertiary)
-
-      TextField("Search chats...", text: $chatProvider.searchQuery)
-        .textFieldStyle(.plain)
-        .scaledFont(size: OmiType.body)
-        .foregroundColor(OmiColors.textPrimary)
-
-      if !chatProvider.searchQuery.isEmpty {
-        Button(action: {
-          chatProvider.searchQuery = ""
-        }) {
-          Image(systemName: "xmark.circle.fill")
-            .scaledFont(size: OmiType.caption)
-            .foregroundColor(OmiColors.textTertiary)
-        }
-        .buttonStyle(.plain)
-      }
-    }
-    .padding(.horizontal, OmiSpacing.sm)
-    .padding(.vertical, OmiSpacing.sm)
-    .background(OmiColors.backgroundTertiary.opacity(0.6))
-    .cornerRadius(OmiChrome.elementRadius)
+    OmiSearchField(
+      placeholder: "Search chats...",
+      text: $chatProvider.searchQuery,
+      accessibilityLabel: "Search chats"
+    )
   }
 
   // MARK: - Sessions List

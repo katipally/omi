@@ -745,30 +745,11 @@ struct ChatHistoryPopover: View {
       .padding(.horizontal, OmiSpacing.lg)
       .padding(.vertical, OmiSpacing.md)
 
-      // Search field
-      HStack(spacing: OmiSpacing.sm) {
-        Image(systemName: "magnifyingglass")
-          .scaledFont(size: OmiType.caption)
-          .foregroundColor(OmiColors.textTertiary)
-
-        TextField("Search chats...", text: $chatProvider.searchQuery)
-          .textFieldStyle(.plain)
-          .scaledFont(size: OmiType.caption)
-          .foregroundColor(OmiColors.textPrimary)
-
-        if !chatProvider.searchQuery.isEmpty {
-          Button(action: { chatProvider.searchQuery = "" }) {
-            Image(systemName: "xmark.circle.fill")
-              .scaledFont(size: OmiType.caption)
-              .foregroundColor(OmiColors.textTertiary)
-          }
-          .buttonStyle(.plain)
-        }
-      }
-      .padding(.horizontal, OmiSpacing.sm)
-      .padding(.vertical, OmiSpacing.xs)
-      .background(OmiColors.backgroundSecondary)
-      .cornerRadius(OmiChrome.badgeRadius)
+      OmiSearchField(
+        placeholder: "Search chats...",
+        text: $chatProvider.searchQuery,
+        accessibilityLabel: "Search chats"
+      )
       .padding(.horizontal, OmiSpacing.lg)
       .padding(.bottom, OmiSpacing.md)
 

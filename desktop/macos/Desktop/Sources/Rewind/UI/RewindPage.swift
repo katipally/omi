@@ -7,6 +7,10 @@ import SwiftUI
 struct RewindPage: View {
   var appState: AppState? = nil
 
+  /// Returns to the tab Rewind was opened from. `nil` in the standalone Rewind
+  /// window, which has no tab to go back to.
+  var onBack: (() -> Void)? = nil
+
   @StateObject private var viewModel = RewindViewModel()
 
   @State private var currentIndex: Int = 0
@@ -339,6 +343,12 @@ struct RewindPage: View {
         .buttonStyle(.plain)
         .help("Back to results")
       } else {
+        // Back to the tab the user came from (shell only). Without this, Rewind
+        // is a dead end: nothing in its own chrome returns you to the app.
+        if let onBack {
+          OmiChip(icon: "arrow.left", title: "Back", help: "Back to app", action: onBack)
+        }
+
         // Rewind title
         HStack(spacing: OmiSpacing.sm) {
           Text("Rewind")

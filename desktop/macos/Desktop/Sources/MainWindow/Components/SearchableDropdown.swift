@@ -117,25 +117,18 @@ struct SearchableDropdown: View {
     }
   }
 
+  /// Shares the header-control chrome so this sits on the same baseline as the
+  /// search field and filter chips it appears beside.
   private var dropdownLabel: some View {
-    HStack(spacing: OmiSpacing.xs) {
-      Text(selectedTitle)
-        .scaledFont(size: OmiType.caption, weight: .medium)
-        .foregroundColor(OmiColors.textSecondary)
-        .lineLimit(1)
-
-      Image(systemName: "chevron.down")
-        .scaledFont(size: OmiType.micro, weight: .semibold)
-        .foregroundColor(OmiColors.textTertiary)
-    }
-    .padding(.horizontal, OmiSpacing.sm)
-    .padding(.vertical, OmiSpacing.xs)
-    .frame(minWidth: minWidth)
-    .background(
-      Capsule()
-        .fill(OmiColors.backgroundSecondary.opacity(0.7))
-        .overlay(Capsule().stroke(OmiColors.border.opacity(0.8), lineWidth: 1))
+    OmiFilterChip(
+      icon: nil,
+      title: selectedTitle,
+      // Callers use an empty id as their "no filter" sentinel (Apps' All
+      // Categories), so emptiness — not nil — is what means inactive.
+      isActive: !(selectedId ?? "").isEmpty,
+      showsDisclosure: true
     )
+    .frame(minWidth: minWidth)
   }
 
   private static func textWidth(_ text: String, font: NSFont) -> CGFloat {

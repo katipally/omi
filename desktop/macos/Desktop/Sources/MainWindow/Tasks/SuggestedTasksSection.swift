@@ -15,23 +15,8 @@ enum SuggestedTasksPresentationPolicy {
 
 struct SuggestedTasksLoadingIndicator: View {
   var body: some View {
-    HStack(spacing: 8) {
-      ProgressView().controlSize(.small)
-      Text("Checking Suggested")
-        .scaledFont(size: 12)
-        .foregroundColor(OmiColors.textTertiary)
-    }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 6)
-    .background(
-      Capsule()
-        .fill(OmiColors.backgroundSecondary.opacity(0.92))
-    )
-    .overlay(
-      Capsule()
-        .stroke(OmiColors.border.opacity(0.8), lineWidth: 1)
-    )
-    .accessibilityIdentifier("suggested-loading")
+    OmiFloatingStatusPill(title: "Checking Suggested")
+      .accessibilityIdentifier("suggested-loading")
   }
 }
 

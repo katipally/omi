@@ -1,3 +1,4 @@
+import AppKit
 import OmiTheme
 import SwiftUI
 
@@ -13,9 +14,29 @@ struct DesktopTopBar: View {
   /// Items created after this instant count as "new" — updated whenever Omi
   /// last resigned front (see DesktopHomeView).
   let sinceDate: Date
+  /// Leading inset that clears the window traffic lights when the bar rides in
+  /// the hidden-titlebar band with no sidebar to its left.
+  var leadingInset: CGFloat = 0
+  /// While settings are open the matching "Back to app" control lives on the
+  /// sidebar glass, so this bar drops its own Settings chip.
+  var isInSettings: Bool = false
   let onRewind: () -> Void
+  /// Toggles the settings sidebar open/closed. Owned by DesktopHomeView so the
+  /// back-navigation target (previous tab) stays correct.
+  var onToggleSettings: () -> Void = {}
+
   @AppStorage(MemoryHubDestination.storageKey) private var memoryDestinationRawValue =
     MemoryHubDestination.memories.rawValue
+
+  /// Drives the sliding selection inside the segmented nav track.
+  @Namespace private var navSegmentNamespace
+
+  private static let logoImage: NSImage? = {
+    guard let url = Bundle.resourceBundle.url(forResource: "herologo", withExtension: "png") else {
+      return nil
+    }
+    return NSImage(contentsOf: url)
+  }()
 
   private struct NavItem: Identifiable {
     let index: Int
@@ -44,48 +65,69 @@ struct DesktopTopBar: View {
   }
 
   var body: some View {
-    HStack(spacing: OmiSpacing.md) {
-      navPills
-      Spacer(minLength: OmiSpacing.md)
-      CaptureListeningControls(appState: appState, onRewind: onRewind)
-      settingsButton
-    }
-    .frame(height: 44)
-    .padding(.horizontal, OmiSpacing.lg)
-    .padding(.vertical, OmiSpacing.sm)
-  }
+    VStack(spacing: OmiSpacing.xs) {
+      // Row 1 — toolbar aligned with the traffic lights: the Settings chip sits
+      // by them (only while closed — in settings "Back to app" lives on the
+      // sidebar glass), the Omi identity is centered, capture on the right.
+      ZStack {
+        omiIdentity
 
-  /// Gear that opens Settings. The old left rail held the settings/profile entry;
-  /// with the rail gone this is the only visible way in (⌘, still works too).
-  private var settingsButton: some View {
-    let isActive = selectedIndex == SidebarNavItem.settings.rawValue
-    return Button {
-      OmiMotion.withGated(.easeOut(duration: 0.08)) {
-        selectedIndex = SidebarNavItem.settings.rawValue
+        HStack(spacing: OmiSpacing.md) {
+          if !isInSettings {
+            settingsChip
+              .padding(.leading, leadingInset)
+              .transition(.opacity)
+          }
+          Spacer(minLength: OmiSpacing.md)
+          CaptureListeningControls(appState: appState, onRewind: onRewind)
+        }
       }
-    } label: {
-      Image(systemName: "gearshape")
-        .scaledFont(size: OmiType.body, weight: .semibold)
-        .foregroundColor(isActive ? OmiColors.textPrimary : OmiColors.textTertiary)
-        .frame(width: 32, height: 32)
-        .background(Circle().fill(isActive ? OmiColors.textPrimary.opacity(0.08) : Color.clear))
-        .contentShape(Circle())
+      .frame(height: 34)
+
+      // Row 2 — the segmented primary nav, centered below the identity.
+      navSegments
     }
-    .buttonStyle(.plain)
-    .help("Settings")
+    .padding(.horizontal, OmiSpacing.lg)
+    .padding(.top, 10)
+    .padding(.bottom, OmiSpacing.sm)
+    .background(WindowDragArea())
   }
 
-  private var navPills: some View {
-    // Flat, containerless nav so the bar blends with the chat page: unselected
-    // items are muted text; the selected item gets a subtle highlight only.
+  /// The app identity in the hidden-titlebar band: mark + wordmark, centered.
+  private var omiIdentity: some View {
     HStack(spacing: OmiSpacing.xs) {
+      if let logo = Self.logoImage {
+        Image(nsImage: logo)
+          .resizable()
+          .scaledToFit()
+          .frame(width: 18, height: 18)
+      }
+      Text("Omi")
+        .scaledFont(size: OmiType.subheading, weight: .semibold)
+        .foregroundColor(OmiColors.textPrimary)
+    }
+    .allowsHitTesting(false)
+    .accessibilityHidden(true)
+  }
+
+  /// Opens settings. It sits by the traffic lights; when settings is open the
+  /// matching "Back to app" control lives on the sidebar glass instead.
+  private var settingsChip: some View {
+    OmiChip(icon: "gearshape", title: "Settings", action: onToggleSettings)
+  }
+
+  /// One track holding the four primary tabs, so the selected fill slides
+  /// between them instead of blinking on and off separate pills. Memory keeps
+  /// its destination menu — it is a segment that also discloses.
+  private var navSegments: some View {
+    HStack(spacing: OmiSpacing.hairline) {
       ForEach(navItems) { item in
         if item.index == SidebarNavItem.conversations.rawValue {
           Menu {
             ForEach(MemoryHubDestination.allCases) { destination in
               Button {
                 memoryDestinationRawValue = destination.rawValue
-                OmiMotion.withGated(.easeOut(duration: 0.08)) {
+                OmiMotion.withGated(OmiSegmentedMetrics.selectionAnimation) {
                   selectedIndex = SidebarNavItem.conversations.rawValue
                 }
               } label: {
@@ -100,7 +142,9 @@ struct DesktopTopBar: View {
           .help("Choose a Memory view")
         } else {
           Button {
-            OmiMotion.withGated(.easeOut(duration: 0.08)) { selectedIndex = item.index }
+            OmiMotion.withGated(OmiSegmentedMetrics.selectionAnimation) {
+              selectedIndex = item.index
+            }
           } label: {
             navLabel(for: item)
           }
@@ -109,10 +153,11 @@ struct DesktopTopBar: View {
         }
       }
     }
+    .omiSegmentedTrack()
   }
 
   private func navLabel(for item: NavItem, showsDisclosure: Bool = false) -> some View {
-    HStack(spacing: 6) {
+    HStack(spacing: OmiSpacing.xs) {
       Image(systemName: item.icon)
         .scaledFont(size: OmiType.caption, weight: .semibold)
       Text(item.title)
@@ -122,7 +167,7 @@ struct DesktopTopBar: View {
           .scaledFont(size: 8, weight: .bold)
           .foregroundStyle(OmiColors.textQuaternary)
       }
-      // New-item badge lives on the button it belongs to (Memory =
+      // New-item badge lives on the segment it belongs to (Memory =
       // memories + conversations, Tasks = tasks) since Omi was last front.
       if newCount(for: item) > 0 {
         Text("+\(newCount(for: item))")
@@ -130,17 +175,16 @@ struct DesktopTopBar: View {
           .foregroundColor(OmiColors.textPrimary)
           .padding(.horizontal, 5)
           .padding(.vertical, 1)
-          .background(Capsule(style: .continuous).fill(OmiColors.textPrimary.opacity(0.16)))
+          .background(Capsule(style: .continuous).fill(OmiColors.textPrimary.opacity(0.18)))
       }
     }
     .foregroundColor(selectedIndex == item.index ? OmiColors.textPrimary : OmiColors.textTertiary)
-    .padding(.horizontal, OmiSpacing.md)
-    .padding(.vertical, 6)
-    .background(
-      Capsule(style: .continuous)
-        .fill(selectedIndex == item.index ? OmiColors.textPrimary.opacity(0.08) : Color.clear)
+    .omiSegmentContent()
+    .omiSegmentFill(
+      isSelected: selectedIndex == item.index,
+      namespace: navSegmentNamespace,
+      geometryID: "navSegment"
     )
-    .contentShape(Capsule())
   }
 
   /// New-item count to badge on a nav button (since Omi was last in front).
@@ -152,5 +196,16 @@ struct DesktopTopBar: View {
     case SidebarNavItem.tasks.rawValue: return newTasks
     default: return 0
     }
+  }
+}
+
+/// Lets the user drag the window by the top bar's empty areas, the way a native
+/// toolbar behaves. Controls on top keep their own clicks; only the gaps drag.
+private struct WindowDragArea: NSViewRepresentable {
+  func makeNSView(context: Context) -> NSView { DragView() }
+  func updateNSView(_ nsView: NSView, context: Context) {}
+
+  private final class DragView: NSView {
+    override var mouseDownCanMoveWindow: Bool { true }
   }
 }

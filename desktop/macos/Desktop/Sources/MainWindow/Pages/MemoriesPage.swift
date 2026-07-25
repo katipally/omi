@@ -1681,7 +1681,7 @@ struct MemoriesPage: View {
         formatDate: formatDate,
         onDismiss: { viewModel.selectedMemory = nil }
       )
-      .frame(width: 450, height: 600)
+      .fittedModal(width: 450, maxHeight: 600)
     }
     .overlay(alignment: .bottom) {
       undoDeleteToast
@@ -1762,14 +1762,10 @@ struct MemoriesPage: View {
   private var header: some View {
     VStack(alignment: .leading, spacing: OmiSpacing.md) {
       HStack(alignment: .firstTextBaseline) {
-        VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
-          Text("Memories")
-            .scaledFont(size: OmiType.heading, weight: .semibold)
-            .foregroundStyle(OmiColors.textPrimary)
-          Text("What Omi has learned and saved for you")
-            .scaledFont(size: OmiType.caption)
-            .foregroundStyle(OmiColors.textTertiary)
-        }
+        OmiPageHeader(
+          title: "Memories",
+          subtitle: "What Omi has learned and saved for you"
+        )
         Spacer()
       }
 
@@ -1797,31 +1793,12 @@ struct MemoriesPage: View {
               .help(filter.description)
             }
           } label: {
-            HStack(spacing: OmiSpacing.xs) {
-              Image(
-                systemName: viewModel.selectedLayerFilter == .archive
-                  ? "archivebox" : "clock.badge.checkmark"
-              )
-              .scaledFont(size: OmiType.caption)
-              Text(viewModel.selectedLayerFilter.displayName)
-                .scaledFont(
-                  size: OmiType.body,
-                  weight: viewModel.selectedLayerFilter == .defaultAccess ? .regular : .medium)
-              Image(systemName: "chevron.down")
-                .scaledFont(size: OmiType.micro)
-            }
-            .foregroundColor(
-              viewModel.selectedLayerFilter == .defaultAccess
-                ? OmiColors.textSecondary : OmiColors.textPrimary
-            )
-            .padding(.horizontal, OmiSpacing.md)
-            .frame(minHeight: 44)
-            .omiControlSurface(
-              fill: viewModel.selectedLayerFilter == .defaultAccess
-                ? OmiColors.backgroundSecondary : OmiColors.backgroundRaised,
-              radius: 16,
-              stroke: OmiColors.border.opacity(
-                viewModel.selectedLayerFilter == .defaultAccess ? 0.18 : 0.6)
+            OmiFilterChip(
+              icon: viewModel.selectedLayerFilter == .archive
+                ? "archivebox" : "clock.badge.checkmark",
+              title: viewModel.selectedLayerFilter.displayName,
+              isActive: viewModel.selectedLayerFilter != .defaultAccess,
+              showsDisclosure: true
             )
           }
           .menuStyle(.button)
@@ -1832,23 +1809,10 @@ struct MemoriesPage: View {
         Button {
           viewModel.filterThisDeviceOnly.toggle()
         } label: {
-          HStack(spacing: OmiSpacing.xs) {
-            Image(systemName: "desktopcomputer")
-              .scaledFont(size: OmiType.caption)
-            Text("This device")
-              .scaledFont(
-                size: OmiType.body, weight: viewModel.filterThisDeviceOnly ? .medium : .regular)
-          }
-          .foregroundColor(
-            viewModel.filterThisDeviceOnly ? OmiColors.textPrimary : OmiColors.textSecondary
-          )
-          .padding(.horizontal, OmiSpacing.md)
-          .frame(minHeight: 44)
-          .omiControlSurface(
-            fill: viewModel.filterThisDeviceOnly
-              ? OmiColors.backgroundRaised : OmiColors.backgroundSecondary,
-            radius: 16,
-            stroke: OmiColors.border.opacity(viewModel.filterThisDeviceOnly ? 0.6 : 0.18)
+          OmiFilterChip(
+            icon: "desktopcomputer",
+            title: "This device",
+            isActive: viewModel.filterThisDeviceOnly
           )
         }
         .buttonStyle(.plain)
@@ -1860,25 +1824,11 @@ struct MemoriesPage: View {
           categorySearchText = ""
           showCategoryFilter = true
         } label: {
-          HStack(spacing: OmiSpacing.xs) {
-            Image(systemName: "line.3.horizontal.decrease")
-              .scaledFont(size: OmiType.caption)
-            Text(categoryFilterLabel)
-              .scaledFont(
-                size: OmiType.body, weight: viewModel.selectedTags.isEmpty ? .regular : .medium)
-            Image(systemName: "chevron.down")
-              .scaledFont(size: OmiType.micro)
-          }
-          .foregroundColor(
-            viewModel.selectedTags.isEmpty ? OmiColors.textSecondary : OmiColors.textPrimary
-          )
-          .padding(.horizontal, OmiSpacing.md)
-          .frame(minHeight: 44)
-          .omiControlSurface(
-            fill: viewModel.selectedTags.isEmpty
-              ? OmiColors.backgroundSecondary : OmiColors.backgroundRaised,
-            radius: 16,
-            stroke: OmiColors.border.opacity(viewModel.selectedTags.isEmpty ? 0.18 : 0.6)
+          OmiFilterChip(
+            icon: "line.3.horizontal.decrease",
+            title: categoryFilterLabel,
+            isActive: !viewModel.selectedTags.isEmpty,
+            showsDisclosure: true
           )
         }
         .buttonStyle(.plain)
@@ -1891,30 +1841,33 @@ struct MemoriesPage: View {
           viewModel.showingAddMemory = true
         } label: {
           Image(systemName: "plus")
-            .scaledFont(size: OmiType.body)
+            .scaledFont(size: OmiType.body, weight: .semibold)
             .foregroundColor(.black)
-            .frame(width: 44, height: 44)
-            .background(OmiColors.textPrimary)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .frame(width: OmiChrome.controlHeight, height: OmiChrome.controlHeight)
+            .background(Circle().fill(OmiColors.textPrimary))
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .help("Add Memory")
+        .accessibilityLabel("Add Memory")
 
         // Management menu
         Button {
           showManagementMenu = true
         } label: {
           Image(systemName: "ellipsis")
-            .scaledFont(size: OmiType.caption, weight: .semibold)
+            .scaledFont(size: OmiType.body, weight: .semibold)
             .foregroundColor(OmiColors.textSecondary)
-            .frame(width: 44, height: 44)
-            .omiControlSurface(
-              fill: OmiColors.backgroundSecondary,
-              radius: 14,
-              stroke: OmiColors.border.opacity(0.18)
+            .frame(width: OmiChrome.controlHeight, height: OmiChrome.controlHeight)
+            .background(
+              Circle()
+                .fill(Color.white.opacity(0.06))
+                .overlay(Circle().stroke(Color.white.opacity(0.08), lineWidth: 1))
             )
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Manage memories")
         .popover(isPresented: $showManagementMenu, arrowEdge: .bottom) {
           managementMenuPopover
         }
@@ -1966,32 +1919,11 @@ struct MemoriesPage: View {
 
   private var categoryFilterPopover: some View {
     VStack(spacing: 0) {
-      // Search field
-      HStack(spacing: OmiSpacing.sm) {
-        Image(systemName: "magnifyingglass")
-          .foregroundColor(OmiColors.textTertiary)
-          .scaledFont(size: OmiType.caption)
-
-        TextField("Search categories...", text: $categorySearchText)
-          .textFieldStyle(.plain)
-          .scaledFont(size: OmiType.body)
-          .foregroundColor(OmiColors.textPrimary)
-
-        if !categorySearchText.isEmpty {
-          Button {
-            categorySearchText = ""
-          } label: {
-            Image(systemName: "xmark.circle.fill")
-              .foregroundColor(OmiColors.textTertiary)
-              .scaledFont(size: OmiType.caption)
-          }
-          .buttonStyle(.plain)
-        }
-      }
-      .padding(.horizontal, OmiSpacing.md)
-      .padding(.vertical, OmiSpacing.sm)
-      .background(OmiColors.backgroundTertiary)
-      .cornerRadius(OmiChrome.badgeRadius)
+      OmiSearchField(
+        placeholder: "Search categories...",
+        text: $categorySearchText,
+        accessibilityLabel: "Search categories"
+      )
       .padding(.horizontal, OmiSpacing.md)
       .padding(.top, OmiSpacing.md)
       .padding(.bottom, OmiSpacing.sm)

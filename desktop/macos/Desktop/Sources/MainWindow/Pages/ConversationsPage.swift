@@ -207,14 +207,10 @@ struct ConversationsPage: View {
       // Fixed page header — title + actions stay pinned; everything below it
       // (live transcript, search, filters, list) scrolls together as one.
       HStack {
-        VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
-          Text("Conversations")
-            .scaledFont(size: OmiType.heading, weight: .semibold)
-            .foregroundColor(OmiColors.textPrimary)
-          Text("Recordings, notes, and transcripts from your day")
-            .scaledFont(size: OmiType.caption)
-            .foregroundStyle(OmiColors.textTertiary)
-        }
+        OmiPageHeader(
+          title: "Conversations",
+          subtitle: "Recordings, notes, and transcripts from your day"
+        )
 
         Spacer()
 

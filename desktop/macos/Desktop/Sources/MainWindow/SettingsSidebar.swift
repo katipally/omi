@@ -1,3 +1,4 @@
+import AppKit
 import OmiTheme
 import SwiftUI
 
@@ -325,12 +326,15 @@ struct SettingsSidebar: View {
   @Binding var highlightedSettingId: String?
   let onBack: () -> Void
 
-  @State private var isBackHovered = false
   @State private var searchQuery = ""
-  @FocusState private var isSearchFocused: Bool
+  /// Drives the sliding selection highlight between nav items.
+  @Namespace private var selectionNamespace
 
   private let expandedWidth: CGFloat = 260
   private let iconWidth: CGFloat = 20
+  /// Leading inset that pushes the Back-to-app chip clear of the window traffic
+  /// lights the glass now sits behind.
+  fileprivate static let trafficLightClearance: CGFloat = 74
   // Merged nav: `.account` hosts Account & Plan (renders `.planUsage` content
   // too) and `.notifications` hosts Notifications & Privacy (renders `.privacy`
   // content too). The absorbed cases stay routable for deep links/automation
@@ -364,17 +368,17 @@ struct SettingsSidebar: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      // Back button header
+      // Back to app — a chip on the glass, aligned to the right of the traffic
+      // lights so the top of the panel reads as the window's toolbar row.
       backButton
-        .padding(.top, OmiSpacing.md)
-        .padding(.horizontal, OmiSpacing.lg)
+        .padding(.leading, SettingsSidebar.trafficLightClearance)
+        .padding(.top, 10)
 
-      Spacer().frame(height: OmiSpacing.xxl)
-
-      // Settings title
+      // Title
       Text("Settings")
-        .scaledFont(size: OmiType.heading, weight: .bold)
+        .scaledFont(size: OmiType.title, weight: .bold)
         .foregroundColor(OmiColors.textPrimary)
+        .padding(.top, OmiSpacing.lg)
         .padding(.horizontal, OmiSpacing.lg)
         .padding(.bottom, OmiSpacing.md)
 
@@ -392,8 +396,9 @@ struct SettingsSidebar: View {
                 section: section,
                 isSelected: selectedSection.sidebarItem == section,
                 iconWidth: iconWidth,
+                namespace: selectionNamespace,
                 onTap: {
-                  OmiMotion.withGated(.easeInOut(duration: 0.15)) {
+                  OmiMotion.withGated(.spring(response: 0.34, dampingFraction: 0.82)) {
                     selectedSection = section
                   }
                 }
@@ -412,43 +417,35 @@ struct SettingsSidebar: View {
       Spacer()
     }
     .frame(width: expandedWidth)
-    .background(OmiColors.backgroundPrimary)
+    .background(sidebarBackground)
+  }
+
+  /// Translucent glass panel with a hairline trailing divider — the settings
+  /// nav reads as a native macOS sidebar rather than a flat opaque column.
+  private var sidebarBackground: some View {
+    ZStack {
+      VisualEffectView(material: .sidebar, blendingMode: .behindWindow, alphaValue: 1)
+      OmiColors.backgroundPrimary.opacity(0.55)
+    }
+    .overlay(alignment: .trailing) {
+      Rectangle()
+        .fill(OmiColors.border.opacity(0.35))
+        .frame(width: 1)
+    }
+    .ignoresSafeArea()
+  }
+
+  /// "Back to app" chip on the glass — the same control as the toolbar's
+  /// Settings chip, so opening and closing read as one affordance.
+  private var backButton: some View {
+    OmiChip(icon: "arrow.left", title: "Back to app", action: onBack)
   }
 
   private var searchField: some View {
-    HStack(spacing: OmiSpacing.sm) {
-      Image(systemName: "magnifyingglass")
-        .scaledFont(size: OmiType.body)
-        .foregroundColor(isSearchFocused ? OmiColors.accent : OmiColors.textTertiary)
-        .omiAnimation(.easeInOut(duration: 0.15), value: isSearchFocused)
-
-      TextField("Search settings...", text: $searchQuery)
-        .textFieldStyle(.plain)
-        .scaledFont(size: OmiType.body)
-        .foregroundColor(OmiColors.textPrimary)
-        .focused($isSearchFocused)
-
-      if !searchQuery.isEmpty {
-        Button {
-          searchQuery = ""
-        } label: {
-          Image(systemName: "xmark.circle.fill")
-            .scaledFont(size: OmiType.caption)
-            .foregroundColor(OmiColors.textTertiary)
-        }
-        .buttonStyle(.plain)
-      }
-    }
-    .padding(.horizontal, OmiSpacing.sm)
-    .padding(.vertical, OmiSpacing.sm)
-    .background(
-      RoundedRectangle(cornerRadius: OmiChrome.elementRadius)
-        .fill(OmiColors.backgroundTertiary)
-        .overlay(
-          RoundedRectangle(cornerRadius: OmiChrome.elementRadius)
-            .stroke(
-              isSearchFocused ? OmiColors.accent.opacity(0.5) : Color.clear, lineWidth: 1)
-        )
+    OmiSearchField(
+      placeholder: "Search settings...",
+      text: $searchQuery,
+      accessibilityLabel: "Search settings"
     )
   }
 
@@ -479,32 +476,6 @@ struct SettingsSidebar: View {
     }
   }
 
-  private var backButton: some View {
-    Button(action: onBack) {
-      HStack(spacing: OmiSpacing.sm) {
-        Image(systemName: "chevron.left")
-          .scaledFont(size: OmiType.body, weight: .semibold)
-          .foregroundColor(OmiColors.textSecondary)
-
-        Text("Back")
-          .scaledFont(size: OmiType.body, weight: .medium)
-          .foregroundColor(OmiColors.textSecondary)
-
-        Spacer()
-      }
-      .padding(.horizontal, OmiSpacing.md)
-      .padding(.vertical, OmiSpacing.sm)
-      .contentShape(Rectangle())
-      .background(
-        RoundedRectangle(cornerRadius: OmiChrome.elementRadius)
-          .fill(isBackHovered ? OmiColors.backgroundTertiary.opacity(0.5) : Color.clear)
-      )
-    }
-    .buttonStyle(.plain)
-    .onHover { hovering in
-      isBackHovered = hovering
-    }
-  }
 }
 
 // MARK: - Settings Sidebar Item
@@ -512,6 +483,9 @@ struct SettingsSidebarItem: View {
   let section: SettingsContentView.SettingsSection
   let isSelected: Bool
   let iconWidth: CGFloat
+  /// Shared with the sidebar so the selected row's highlight slides between
+  /// items instead of blinking out and back in.
+  var namespace: Namespace.ID
   let onTap: () -> Void
 
   @State private var isHovered = false
@@ -546,25 +520,34 @@ struct SettingsSidebarItem: View {
               .frame(width: iconWidth)
 
             Text(section.displayTitle)
-              .scaledFont(size: OmiType.body, weight: isSelected ? .medium : .regular)
+              .scaledFont(size: OmiType.body, weight: isSelected ? .semibold : .regular)
               .foregroundColor(isSelected ? OmiColors.textPrimary : OmiColors.textSecondary)
 
-            Spacer()
+            Spacer(minLength: 0)
           }
           .padding(.horizontal, OmiSpacing.md)
-          .padding(.vertical, OmiSpacing.md)
+          .padding(.vertical, OmiSpacing.sm + 2)
           .contentShape(Rectangle())
-          .background(
-            RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius)
-              .fill(
-                isSelected
-                  ? OmiColors.backgroundTertiary.opacity(0.8)
-                  : (isHovered ? OmiColors.backgroundTertiary.opacity(0.5) : Color.clear))
-          )
+          .background {
+            ZStack {
+              if isSelected {
+                RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius, style: .continuous)
+                  .fill(Color.white.opacity(0.10))
+                  .overlay(
+                    RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius, style: .continuous)
+                      .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                  )
+                  .matchedGeometryEffect(id: "settingsSelection", in: namespace)
+              } else if isHovered {
+                RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius, style: .continuous)
+                  .fill(Color.white.opacity(0.05))
+              }
+            }
+          }
         }
         .buttonStyle(.plain)
         .onHover { hovering in
-          isHovered = hovering
+          OmiMotion.withGated(.easeOut(duration: 0.12)) { isHovered = hovering }
         }
       }
     }

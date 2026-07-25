@@ -1,8 +1,8 @@
 {
   "files": {
     "desktop/macos/Desktop/Sources/FloatingControlBar/AgentPill.swift": 2375,
-    "desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarView.swift": 2721,
-    "desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarWindow.swift": 4829,
+    "desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarView.swift": 2631,
+    "desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarWindow.swift": 4880,
     "desktop/macos/Desktop/Sources/FloatingControlBar/PushToTalkManager.swift": 2577,
     "desktop/macos/Desktop/Sources/FloatingControlBar/RealtimeHubController+SessionDelegate.swift": 1513,
     "desktop/macos/Desktop/Sources/FloatingControlBar/RealtimeHubController.swift": 1536,
@@ -11,7 +11,7 @@
   "raise_justifications": {
     "desktop/macos/Desktop/Sources/FloatingControlBar/AgentPill.swift": "Agent completion presentation now follows the canonical terminal lifecycle used by PTT and chat.",
     "desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarView.swift": "The notch lobe hosts one morphing voice orb across listening, speaking and thinking; the surface gained a voice reply section that reveals the answer at speaking cadence and holds it after the turn, plus a hint fallback for refusals posted outside a turn.",
-    "desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarWindow.swift": "Second Brain continuous-chat routing shares window geometry with agent-only hover sizing and canonical idle-notch chat ownership.",
+    "desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarWindow.swift": "The manager now owns the per-display notch panels and their shared state alongside the legacy pill window, routing show/hide/snooze/notification through whichever surface is running.",
     "desktop/macos/Desktop/Sources/FloatingControlBar/PushToTalkManager.swift": "DEBUG owner-boundary tests need a capture-free effect-handler install seam; shared ensureAutomationBarConfigured() removes duplicated automation setup while adding that seam (BasedHardware/omi#10499).",
     "desktop/macos/Desktop/Sources/FloatingControlBar/RealtimeHubController+SessionDelegate.swift": "Streaming assistant deltas are mirrored to the bar state so the notch can reveal the reply mid-turn, before the journaled exchange lands at turn end.",
     "desktop/macos/Desktop/Sources/FloatingControlBar/RealtimeHubController.swift": "Adds bounded realtime mint-failure outcome correlation and close-resolution telemetry so release health distinguishes started recovery from exhaustion; telemetry-only, no lifecycle change (#10425).",

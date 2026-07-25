@@ -20,6 +20,14 @@ extension FloatingControlBarManager {
     guard FloatingBarPresentationPolicy.shouldPresent(request: request, isSnoozed: isSnoozed) else {
       return
     }
+    // The notch panels own the reveal themselves: each panel's content grows
+    // out of its own display's camera housing, so there is no single window to
+    // order front or animate.
+    if let notchScreenManager {
+      hasRevealedNotchThisSession = true
+      notchScreenManager.showAll()
+      return
+    }
     // Reveal on every hidden→present transition (not just once per session):
     // the island should always grow out of the notch instead of popping in.
     let shouldPlayNotchReveal =

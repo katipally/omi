@@ -2544,6 +2544,14 @@ class FloatingControlBarManager {
   }
 
   var window: FloatingControlBarWindow?
+  /// The notch surface: one panel per display, each a fixed-frame `NotchWindow`
+  /// whose inner content grows out of the camera housing. Replaces the legacy
+  /// single resizing bar window as the presentation layer.
+  private(set) var notchScreenManager: NotchScreenManager?
+  /// The state the notch panels observe. The legacy bar kept this inside its
+  /// window; the notch has one state shared across every display's panel, so
+  /// the manager owns it directly.
+  let notchState = FloatingControlBarState()
   /// Tracks whether the deferred notch reveal has happened this session for
   /// explicit opt-in contexts such as onboarding/demo/minimal mode.
   var hasRevealedNotchThisSession = false
@@ -2560,7 +2568,9 @@ class FloatingControlBarManager {
   /// Public read-only access to the currently-active agent chat pill in the
   /// floating bar, so viewed-pill expiration can skip the one the user is
   /// actively reading.
-  var activeAgentChatPillID: UUID? { window?.state.activeAgentChatPillID }
+  var activeAgentChatPillID: UUID? {
+    notchScreenManager != nil ? notchState.activeAgentChatPillID : window?.state.activeAgentChatPillID
+  }
 
   func openAgentChatFromTimeline(agentID: UUID, completion: ((Bool) -> Void)? = nil) {
     openAgentChatFromTimeline(
@@ -2687,6 +2697,7 @@ class FloatingControlBarManager {
     if let window, window.state.currentNotification != nil {
       window.dismissNotification(animated: false)
     }
+    notchScreenManager?.hideAll()
     window?.orderOut(nil)
     scheduleSnoozeTimer()
     AnalyticsManager.shared.floatingBarToggled(visible: false, source: "snooze")
@@ -2698,6 +2709,7 @@ class FloatingControlBarManager {
     snoozeTimer?.invalidate()
     snoozeTimer = nil
     if isEnabled {
+      notchScreenManager?.showAll()
       window?.makeKeyAndOrderFront(nil)
     }
   }
@@ -2738,6 +2750,8 @@ class FloatingControlBarManager {
     if window?.state.currentNotification != nil {
       window?.dismissNotification(animated: false)
     }
+    notchState.currentNotification = nil
+    notchState.clearVisibleConversation()
     window?.state.clearVisibleConversation()
   }
 
@@ -2762,8 +2776,36 @@ class FloatingControlBarManager {
     return value
   }
 
-  /// Create the floating bar window and wire up AppState bindings.
+  /// Create the notch panels and wire up AppState bindings.
   func setup(appState: AppState, chatProvider: ChatProvider) {
+    guard notchScreenManager == nil else {
+      log("FloatingControlBarManager: setup() called but the notch is already running")
+      return
+    }
+    log("FloatingControlBarManager: setup() creating notch panels")
+
+    notchState.isRecording = appState.isTranscribing
+    recordingCancellable = appState.$isTranscribing
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] isTranscribing in
+        self?.notchState.isRecording = isTranscribing
+      }
+
+    let screenManager = NotchScreenManager()
+    screenManager.start(barState: notchState, chatProvider: chatProvider)
+    notchScreenManager = screenManager
+
+    // Re-apply any in-flight snooze that survived app relaunch.
+    if isSnoozed {
+      scheduleSnoozeTimer()
+    } else if snoozedUntil != nil {
+      snoozedUntil = nil
+    }
+  }
+
+  /// Legacy single-window bar. Retained only for the pill path on displays the
+  /// notch cannot claim; see `setup` for the notch surface.
+  private func setupLegacyBarWindow(appState: AppState, chatProvider: ChatProvider) {
     guard window == nil else {
       log("FloatingControlBarManager: setup() called but window already exists")
       return
@@ -2868,9 +2910,10 @@ class FloatingControlBarManager {
 
   }
 
-  /// Whether the floating bar window is currently visible.
+  /// Whether the notch surface is on screen (panels exist on every display).
   var isVisible: Bool {
-    window?.isVisible ?? false
+    if let notchScreenManager { return notchScreenManager.visibleWindowCount > 0 }
+    return window?.isVisible ?? false
   }
 
   struct AutomationState {
@@ -3130,7 +3173,7 @@ class FloatingControlBarManager {
     let presentation = FloatingBarLaunchPolicy.presentation(
       isEnabled: isEnabled,
       context: context,
-      displayHasNotch: window?.usesNotchIslandForCurrentScreen == true
+      displayHasNotch: NotchMetrics.screenHasCameraHousing(NSScreen.main)
     )
 
     switch presentation {
@@ -3146,7 +3189,7 @@ class FloatingControlBarManager {
   /// Opt-in presentation for contexts where the notch should stay hidden until
   /// the user's first Push-to-Talk press (which calls `show()`).
   func showDeferredUntilFirstPushToTalk() {
-    if window?.usesNotchIslandForCurrentScreen == true, !hasRevealedNotchThisSession {
+    if NotchMetrics.screenHasCameraHousing(NSScreen.main), !hasRevealedNotchThisSession {
       isEnabled = true
       log("FloatingControlBarManager: showDeferredUntilFirstPushToTalk() — notch hidden until first Push-to-Talk")
       return
@@ -3162,6 +3205,7 @@ class FloatingControlBarManager {
   /// Hide the floating bar and persist the preference.
   func hide() {
     isEnabled = false
+    notchScreenManager?.hideAll()
     if let window {
       window.retractIntoNotch { [weak window] in
         window?.orderOut(nil)
@@ -3191,6 +3235,7 @@ class FloatingControlBarManager {
       return
     }
     log("FloatingControlBarManager: showTemporarily() — showing bar above Chrome")
+    notchScreenManager?.showAll()
     window?.normalizeForTemporaryShow()
     window?.makeKeyAndOrderFront(nil)
   }
@@ -4225,11 +4270,17 @@ class FloatingControlBarManager {
 
   /// Access the bar state for PTT updates.
   var barState: FloatingControlBarState? {
-    return window?.state
+    return notchScreenManager != nil ? notchState : window?.state
   }
 
   /// Resize the floating bar for PTT state changes.
+  ///
+  /// The notch panel's frame is deliberately fixed — only its inner content
+  /// resizes, so every expansion grows out of the camera housing rather than
+  /// the window jumping. Sizing there is derived from the presentation ladder,
+  /// so there is nothing for an external resize call to do.
   func resizeForPTT(expanded: Bool) {
+    guard notchScreenManager == nil else { return }
     window?.resizeForPTTState(expanded: expanded)
   }
 

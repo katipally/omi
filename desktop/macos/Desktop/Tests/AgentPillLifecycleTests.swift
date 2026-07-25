@@ -552,8 +552,12 @@ import XCTest
     XCTAssertTrue(windowSource.contains("state.isNotchHoverMenuVisible ? .openMenuRetention : .activationOnly"))
     XCTAssertTrue(source.contains("isChatChromePinned || shouldShowNotchHoverMenu"))
     XCTAssertTrue(source.contains("static let maxAgents = FloatingControlBarWindow.notchAgentListMaxVisibleAgents"))
-    XCTAssertTrue(source.contains("static let dotDiameterRatio: CGFloat = 0.18"))
-    XCTAssertTrue(source.contains("static let ringRadiusRatio: CGFloat = 0.33"))
+    // The Omi mark now lives in the shared notch package. Its ring geometry is
+    // still pinned here because the voice orb reproduces these exact ratios —
+    // that is what makes the orb's resting ring read as the logo itself.
+    let omiMark = try notchOmiMarkSource()
+    XCTAssertTrue(omiMark.contains("static let dotDiameterRatio: CGFloat = 0.18"))
+    XCTAssertTrue(omiMark.contains("static let ringRadiusRatio: CGFloat = 0.33"))
     XCTAssertTrue(source.contains("NotchAgentOmiIndicatorView(pills: stackedPills)"))
     XCTAssertTrue(source.contains("NotchOmiMark(dotColors: visiblePills.map"))
     XCTAssertTrue(source.contains("NotchAgentMorphField("))
@@ -1886,6 +1890,15 @@ import XCTest
       .deletingLastPathComponent()
       .deletingLastPathComponent()
       .appendingPathComponent("Sources/MainWindow/Components/OmiMarkdown.swift")
+    return try String(contentsOf: sourceURL, encoding: .utf8)
+  }
+
+  private func notchOmiMarkSource() throws -> String {
+    let sourceURL = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .appendingPathComponent("Sources/FloatingControlBar/Notch/NotchOmiMarkView.swift")
+    // omi-test-quality: source-inspection -- static contract: the mark's ring ratios are a shared geometry constant the voice orb mirrors; there is no runtime seam that exposes them.
     return try String(contentsOf: sourceURL, encoding: .utf8)
   }
 

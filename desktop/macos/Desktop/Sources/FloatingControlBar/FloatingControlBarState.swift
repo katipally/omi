@@ -391,16 +391,13 @@ class FloatingControlBarState: NSObject, ObservableObject {
   @Published var usesNotchIsland: Bool = false
   @Published var notchRevealProgress: CGFloat = 1
 
-  /// Live voice-turn mirror for the notch reply surface. A voice turn journals
-  /// the exchange only at turn end, so mid-turn the provider timeline has
-  /// nothing to render; these carry the streaming assistant text purely for
-  /// display. Never a second transcript store — the journaled pair remains the
-  /// only record, and this is cleared once the turn ends.
+  /// Live voice-turn mirror for the notch. A voice turn journals the exchange
+  /// only at turn end, so mid-turn the provider timeline has nothing to render;
+  /// these carry the in-flight transcript and streaming assistant text purely
+  /// for display. Never a second transcript store — the journaled pair remains
+  /// the only record, and both are cleared once the turn ends.
+  @Published var liveVoiceUserText: String = ""
   @Published var liveVoiceAssistantText: String = ""
-
-  /// Holds the finished reply on the notch for a few seconds so a half-heard
-  /// answer stays readable.
-  let replyLinger = NotchReplyLingerModel()
 
   /// One-shot notch hint outside the voice projection (e.g. PTT blocked by the
   /// usage limit).
@@ -422,16 +419,18 @@ class FloatingControlBarState: NSObject, ObservableObject {
     // can't flash under the fresh question.
     if projection.isListening, !voiceProjection.isListening {
       liveVoiceAssistantText = ""
-      replyLinger.resetReply()
+      liveVoiceUserText = ""
     }
     voiceProjection = projection
-    // Once the voice presentation fully ends, hand the streamed reply to the
-    // linger before clearing the mirror — capturing it here (rather than when
-    // the response goes inactive) is what keeps the surface from collapsing to
-    // idle for a frame first.
+    // Mirror the in-flight transcript; clear the whole mirror once the voice
+    // presentation fully ends (by then the journaled exchange has landed on the
+    // shared timeline). The notch's own linger holds the finished reply on
+    // screen, so clearing here does not cut the answer short.
+    if !projection.transcript.isEmpty {
+      liveVoiceUserText = projection.transcript
+    }
     if !isVoicePresentationActive {
-      replyLinger.noteReply(liveVoiceAssistantText)
-      replyLinger.beginReplyDismiss()
+      liveVoiceUserText = ""
       liveVoiceAssistantText = ""
     }
   }

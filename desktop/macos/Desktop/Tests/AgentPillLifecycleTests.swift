@@ -430,7 +430,8 @@ import XCTest
         "let targetSize = self.currentSurfaceSizeForCurrentScreen(frameIncludesVoiceGlow: wasActive)"))
   }
 
-  func testNotchPTTUsesCompactWaveformOnly() throws {
+  /// Static checker (source-scraping tripwire, not behavioral coverage).
+  func testNotchPTTUsesCompactVoiceOrbOnly() throws {
     let source = try floatingControlBarViewSource()
 
     guard let lobeRange = source.range(of: "private var notchAgentLobe: some View"),
@@ -440,19 +441,23 @@ import XCTest
     }
     let lobeSource = String(source[lobeRange.lowerBound..<controlRange.lowerBound])
 
-    XCTAssertTrue(lobeSource.contains("VoiceWaveformBars(isActive: true)"))
+    // One orb spans the whole turn so it morphs in place; a per-phase branch
+    // here would cross-fade separate views instead.
+    XCTAssertEqual(lobeSource.components(separatedBy: "NotchVoiceOrb(").count - 1, 1)
     XCTAssertFalse(lobeSource.contains("showingNotchPttHint"))
     XCTAssertTrue(source.contains("pttStatusBanner"))
     XCTAssertTrue(source.contains("state.isVoiceListening && state.pttHintText.isEmpty"))
     XCTAssertFalse(source.contains("!state.isVoiceFollowUp && !state.showingAIConversation"))
   }
 
+  /// Static checker (source-scraping tripwire, not behavioral coverage).
   func testVoiceWaveformBarsOwnedByChromeMorph() throws {
     let view = try floatingControlBarViewSource()
     let response = try aiResponseViewSource()
     let waveformSites = view.components(separatedBy: "VoiceWaveformBars(").count - 1
-    // Chrome morph lobe + optional idle pill voiceListeningView.
-    XCTAssertEqual(waveformSites, 2)
+    // The notch lobe is the orb's now; the raw bars survive only on the idle
+    // pill's voiceListeningView.
+    XCTAssertEqual(waveformSites, 1)
     XCTAssertTrue(view.contains("private var notchAgentLobe: some View"))
     XCTAssertTrue(view.contains("private var voiceListeningView: some View"))
     XCTAssertTrue(

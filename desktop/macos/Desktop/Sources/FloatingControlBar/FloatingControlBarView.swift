@@ -225,6 +225,14 @@ struct FloatingControlBarView: View {
     !state.pttHintText.isEmpty
   }
 
+  /// Omi's reply on the notch: streaming in step with the spoken voice, then
+  /// held for a few seconds after the turn ends so it stays readable. Never
+  /// competes with the open conversation, which renders the same reply itself.
+  private var showingNotchVoiceReply: Bool {
+    guard state.usesNotchIsland, !state.showingAIConversation else { return false }
+    return showingNotchSpeaking || state.replyLinger.isLingeringReply
+  }
+
   private var unifiedFloatingSurface: some View {
     VStack(spacing: 0) {
       if state.usesNotchIsland || state.showingAIConversation {
@@ -268,6 +276,13 @@ struct FloatingControlBarView: View {
           .padding(.horizontal, 10)
           .padding(.bottom, 10)
           .transition(.move(edge: .top).combined(with: .opacity))
+      }
+
+      if showingNotchVoiceReply {
+        notchVoiceReplySection
+          .padding(.horizontal, 14)
+          .padding(.bottom, 12)
+          .transition(.opacity)
       }
     }
     .overlay(alignment: .top) {
@@ -482,6 +497,7 @@ struct FloatingControlBarView: View {
       || state.currentNotification != nil
       || shouldShowNotchHoverMenu
       || showingPTTStatusBanner
+      || showingNotchVoiceReply
     guard hasExpandedSurface else {
       return CGSize(width: notchChromeWidth, height: notchChromeHeight)
     }
@@ -566,6 +582,38 @@ struct FloatingControlBarView: View {
   }
 
   /// Picks the actionable "Couldn't reach Omi" card for reach errors, else the
+  /// Omi's reply under the notch: revealed at speaking cadence while the voice
+  /// plays, then held. Hovering pauses the dismissal so a longer answer can be
+  /// read; Esc dismisses; tapping opens the full conversation in the app.
+  private var notchVoiceReplySection: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      StreamingReplyText(
+        fullText: state.replyLinger.isLingeringReply && !showingNotchSpeaking
+          ? state.replyLinger.heldReply
+          : state.liveVoiceAssistantText
+      )
+      .frame(maxWidth: .infinity, alignment: .leading)
+
+      if state.replyLinger.isLingeringReply && !showingNotchSpeaking {
+        Text("Open in Omi")
+          .scaledFont(size: OmiType.caption, weight: .medium)
+          .foregroundStyle(.white.opacity(0.45))
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .contentShape(Rectangle())
+    .onHover { hovering in
+      // A reply you are still reading must not time out under the pointer.
+      if hovering {
+        state.replyLinger.keepReply()
+      } else {
+        state.replyLinger.resumeReplyDismiss()
+      }
+    }
+    .onTapGesture { openMainChatFromLingeringReply() }
+    .accessibilityAddTraits(.isStaticText)
+  }
+
   /// normal notification card.
   @ViewBuilder
   private func barNotification(_ notification: FloatingBarNotification) -> some View {
@@ -970,6 +1018,13 @@ struct FloatingControlBarView: View {
         (NSApp.delegate as? AppDelegate)?.openMainAppChat()
       }
     )
+  }
+
+  /// The lingering reply is a jump-off point: tapping it opens the full
+  /// conversation in the app, which is also what dismisses the linger.
+  private func openMainChatFromLingeringReply() {
+    state.replyLinger.dismissReply()
+    (NSApp.delegate as? AppDelegate)?.openMainAppChat()
   }
 
   private func showAgentListFromConversation() {

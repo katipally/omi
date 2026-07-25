@@ -391,8 +391,49 @@ class FloatingControlBarState: NSObject, ObservableObject {
   @Published var usesNotchIsland: Bool = false
   @Published var notchRevealProgress: CGFloat = 1
 
+  /// Live voice-turn mirror for the notch reply surface. A voice turn journals
+  /// the exchange only at turn end, so mid-turn the provider timeline has
+  /// nothing to render; these carry the streaming assistant text purely for
+  /// display. Never a second transcript store — the journaled pair remains the
+  /// only record, and this is cleared once the turn ends.
+  @Published var liveVoiceAssistantText: String = ""
+
+  /// Holds the finished reply on the notch for a few seconds so a half-heard
+  /// answer stays readable.
+  let replyLinger = NotchReplyLingerModel()
+
+  /// One-shot notch hint outside the voice projection (e.g. PTT blocked by the
+  /// usage limit).
+  @Published var transientHintText: String = ""
+  private var transientHintClearTask: Task<Void, Never>?
+
+  func flashHint(_ text: String, for seconds: TimeInterval = 3) {
+    transientHintText = text
+    transientHintClearTask?.cancel()
+    transientHintClearTask = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(seconds))
+      guard !Task.isCancelled else { return }
+      self?.transientHintText = ""
+    }
+  }
+
   private func applyVoiceProjection(_ projection: VoiceTurnUIProjection) {
+    // A new hold is a new turn: drop the previous turn's streamed reply so it
+    // can't flash under the fresh question.
+    if projection.isListening, !voiceProjection.isListening {
+      liveVoiceAssistantText = ""
+      replyLinger.resetReply()
+    }
     voiceProjection = projection
+    // Once the voice presentation fully ends, hand the streamed reply to the
+    // linger before clearing the mirror — capturing it here (rather than when
+    // the response goes inactive) is what keeps the surface from collapsing to
+    // idle for a frame first.
+    if !isVoicePresentationActive {
+      replyLinger.noteReply(liveVoiceAssistantText)
+      replyLinger.beginReplyDismiss()
+      liveVoiceAssistantText = ""
+    }
   }
 
   /// Whether the current query originated from voice (PTT). Used to decide

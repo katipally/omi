@@ -50,6 +50,7 @@ covers:
   - desktop/macos/Desktop/Sources/Bluetooth/DeviceUUIDs.swift
   - desktop/macos/Desktop/Sources/ConcurrencySendable.swift
   - desktop/macos/Desktop/Sources/FloatingControlBar/StreamingPCMPlayer.swift
+  - desktop/macos/Desktop/Sources/AudioLevelMonitor.swift
   - desktop/macos/Desktop/Sources/FloatingControlBar/SystemAudioMuteController.swift
   - desktop/macos/Desktop/Sources/FileIndexing/IndexedFileRecord.swift
   - desktop/macos/Desktop/Sources/FileIndexing/KnowledgeGraphRecord.swift

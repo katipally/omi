@@ -54,22 +54,6 @@ extension SettingsContentView {
         }
       }
 
-      settingsCard(settingId: "floatingbar.draggable") {
-        HStack(spacing: OmiSpacing.lg) {
-          VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
-            Text("Draggable Floating Bar")
-              .scaledFont(size: OmiType.subheading, weight: .semibold)
-              .foregroundColor(OmiColors.textPrimary)
-            Text("Allow repositioning the floating bar by dragging it.")
-              .scaledFont(size: OmiType.body)
-              .foregroundColor(OmiColors.textSecondary)
-          }
-          Spacer()
-          Toggle("", isOn: $shortcutSettings.draggableBarEnabled)
-            .toggleStyle(OmiToggleStyle())
-        }
-      }
-
       settingsCard(settingId: "floatingbar.typedvoiceanswers") {
         HStack(spacing: OmiSpacing.lg) {
           VStack(alignment: .leading, spacing: OmiSpacing.xxs) {

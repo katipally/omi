@@ -67,7 +67,12 @@ struct NotchView: View {
       : .scale(scale: 0.94, anchor: .top).combined(with: .opacity)
   }
 
-  private var displayedSize: CGSize { vm.size(for: presentation) }
+  private var displayedSize: CGSize {
+    vm.size(
+      for: presentation,
+      notificationCardHeight: NotchMetrics.notificationHeight(
+        forAssistantId: barState.currentNotification?.assistantId))
+  }
 
   private var topCornerRadius: CGFloat {
     presentation.isExpandedSurface ? NotchMetrics.cornerOpen.top : NotchMetrics.cornerClosed.top

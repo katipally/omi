@@ -165,21 +165,24 @@ final class NotchViewModel: ObservableObject {
       height: closedNotchSize.height + NotchMetrics.hintRowHeight)
   }
 
-  var notificationSize: CGSize {
+  var notificationSize: CGSize { notificationSize(cardHeight: NotchMetrics.notificationSize.height) }
+
+  func notificationSize(cardHeight: CGFloat) -> CGSize {
     CGSize(
       width: max(closedNotchSize.width, NotchMetrics.notificationSize.width),
-      height: closedNotchSize.height + NotchMetrics.notificationSpacing + NotchMetrics.notificationSize.height)
+      height: closedNotchSize.height + NotchMetrics.notificationSpacing + cardHeight)
   }
 
   /// The panel size for a presentation — the single sizing authority. Content
   /// (in NotchView) switches on the same value, so size and content stay locked.
-  func size(for presentation: NotchPresentation) -> CGSize {
+  func size(for presentation: NotchPresentation, notificationCardHeight: CGFloat? = nil) -> CGSize {
     switch presentation {
     case .open(let tab): return openContentSize(for: tab)
     case .listening, .responding: return voiceExpandedSize
     case .thinking: return thinkingSize
     case .hint: return hintSize
-    case .notification: return notificationSize
+    case .notification:
+      return notificationSize(cardHeight: notificationCardHeight ?? NotchMetrics.notificationSize.height)
     case .idle: return closedNotchSize
     }
   }

@@ -10,9 +10,89 @@ struct NotchNotificationCard: View {
   var body: some View {
     if notification.assistantId == "reach_error" {
       reachErrorCard
+    } else if notification.assistantId == NotchMoment.receiptAssistantId {
+      receiptCard
+    } else if notification.assistantId == NotchMoment.endAssistantId {
+      endCard
     } else {
       notificationCard
     }
+  }
+
+  /// Durable receipt — "✓ Saved to Tasks — <task>" with Review and Undo, shown
+  /// only after Omi can read the task through the canonical action-items path.
+  /// Monochrome, on the notch's black glass. Auto-collapses.
+  private var receiptCard: some View {
+    HStack(spacing: 10) {
+      Text(notification.title)
+        .scaledFont(size: 12.5)
+        .foregroundColor(.white)
+        .lineLimit(1)
+      Spacer(minLength: 8)
+      Button {
+        NotchMomentsCoordinator.shared.reviewLastReceipt()
+        FloatingControlBarManager.shared.dismissCurrentNotification()
+      } label: {
+        Text("Review")
+          .scaledFont(size: 11.5)
+          .foregroundColor(.white)
+          .underline()
+      }
+      .buttonStyle(.plain)
+      Button {
+        NotchMomentsCoordinator.shared.undoLastReceipt()
+        FloatingControlBarManager.shared.dismissCurrentNotification()
+      } label: {
+        Text("Undo")
+          .scaledFont(size: 11.5)
+          .foregroundColor(.white.opacity(0.55))
+          .underline()
+      }
+      .buttonStyle(.plain)
+    }
+    .padding(.horizontal, OmiSpacing.md)
+    .padding(.vertical, OmiSpacing.sm)
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  /// Conversation ends — the USP moment. "N follow-ups ready" + Review / Later.
+  private var endCard: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      if !notification.message.isEmpty {
+        Text(notification.message)
+          .scaledFont(size: 11)
+          .foregroundColor(.white.opacity(0.55))
+          .lineLimit(1)
+      }
+      Text(notification.title)
+        .scaledFont(size: 13, weight: .semibold)
+        .foregroundColor(.white)
+        .lineLimit(1)
+      HStack(spacing: 7) {
+        Button {
+          NotchMomentsCoordinator.shared.reviewFollowUps()
+          FloatingControlBarManager.shared.dismissCurrentNotification()
+        } label: {
+          Text("Review")
+            .scaledFont(size: 12, weight: .semibold)
+            .foregroundColor(.black)
+            .padding(.horizontal, 11).padding(.vertical, 4)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        Button {
+          FloatingControlBarManager.shared.dismissCurrentNotification()
+        } label: {
+          Text("Later").scaledFont(size: 12).foregroundColor(.white.opacity(0.5))
+        }
+        .buttonStyle(.plain)
+      }
+      .padding(.top, 4)
+    }
+    .padding(.horizontal, OmiSpacing.md)
+    .padding(.vertical, OmiSpacing.sm)
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   private var notificationCard: some View {

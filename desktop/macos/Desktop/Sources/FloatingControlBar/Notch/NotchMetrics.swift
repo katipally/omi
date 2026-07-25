@@ -32,6 +32,16 @@ enum NotchMetrics {
   static let hintRowHeight: CGFloat = 30
   /// Proactive notification card shown below the closed chrome.
   static let notificationSize = CGSize(width: 430, height: 108)
+
+  /// Moment cards are shorter than a full proactive notification, so the panel
+  /// fits the card instead of leaving a tall empty slab of black under it.
+  static func notificationHeight(forAssistantId assistantId: String?) -> CGFloat {
+    switch assistantId {
+    case NotchMoment.receiptAssistantId: return 44
+    case NotchMoment.endAssistantId: return 84
+    default: return notificationSize.height
+    }
+  }
   static let notificationSpacing: CGFloat = 8
   /// Slack around the content so the fixed window can hold glow bleed + shadow.
   static let shadowPadding: CGFloat = 22

@@ -801,6 +801,11 @@ extension RealtimeHubController {
     else { return }
     if !text.isEmpty {
       assistantText += text
+      // Mirror the streaming reply so the notch can reveal it as Omi speaks.
+      // The journaled exchange only lands on the shared timeline at turn end,
+      // so without this the notch has nothing to render for the whole reply.
+      // Display-only: cleared when the voice presentation ends (INV-CHAT-1).
+      FloatingControlBarManager.shared.barState?.liveVoiceAssistantText = assistantText
       if let turnID = VoiceTurnCoordinator.shared.activeTurnID,
         let providerIdentity = VoiceTurnCoordinator.shared.activeTurn?.providerEffectIdentity
       {

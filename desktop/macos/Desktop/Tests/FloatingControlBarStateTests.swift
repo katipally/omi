@@ -188,6 +188,51 @@ final class FloatingControlBarStateTests: XCTestCase {
     XCTAssertEqual(state.voiceProjection, coordinator.projection)
   }
 
+  /// INV-CHAT-1: the streaming reply mirror is display-only. It must not
+  /// outlive the voice presentation, because after that the journaled exchange
+  /// on the shared timeline owns the turn and a surviving mirror would be a
+  /// second store showing stale text.
+  func testLiveReplyMirrorClearsWhenTheVoicePresentationEnds() {
+    let state = FloatingControlBarState()
+    let (coordinator, turnID, _) = makeResponseActive(on: state)
+    state.liveVoiceAssistantText = "half a rep"
+    XCTAssertTrue(state.isVoicePresentationActive)
+
+    coordinator.publish(.cancel(turnID: turnID, reason: .cancelled))
+
+    XCTAssertFalse(state.isVoicePresentationActive)
+    XCTAssertEqual(state.liveVoiceAssistantText, "")
+  }
+
+  /// A fresh hold is a fresh turn: the previous reply must not flash under the
+  /// new question while the new one is still being spoken.
+  func testNewListeningTurnDropsThePreviousReplyMirror() {
+    let state = FloatingControlBarState()
+    let coordinator = VoiceTurnCoordinator()
+    coordinator.configure(barState: state)
+    state.liveVoiceAssistantText = "answer from the last turn"
+
+    _ = coordinator.begin(intent: .hold)
+
+    XCTAssertTrue(state.isListeningPhase)
+    XCTAssertEqual(state.liveVoiceAssistantText, "")
+  }
+
+  /// A PTT hint means something went wrong. `isVoiceListening` folds the hint
+  /// in, so a ladder deriving from it renders a listening surface and the user
+  /// never sees the error. `isListeningPhase` is the un-folded phase.
+  func testListeningPhaseExcludesHintsSoErrorsCanSurface() {
+    let state = FloatingControlBarState()
+    let coordinator = VoiceTurnCoordinator()
+    coordinator.configure(barState: state)
+    let turnID = coordinator.begin(intent: .hold)
+    coordinator.publish(.finish(turnID: turnID, reason: .tooShort))
+
+    XCTAssertFalse(state.pttHintText.isEmpty, "a too-short hold must produce a hint")
+    XCTAssertTrue(state.isVoiceListening, "the folded accessor stays true while a hint shows")
+    XCTAssertFalse(state.isListeningPhase, "the raw phase must not claim we are still listening")
+  }
+
   func testStateSourceHasNoVoiceWatchdogOrConversationGlowMutation() throws {
     let sourceURL = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()

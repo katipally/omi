@@ -369,6 +369,11 @@ class FloatingControlBarState: NSObject, ObservableObject {
   var isVoiceListening: Bool {
     voiceProjection.isListening || !voiceProjection.hint.isEmpty
   }
+  /// The reducer's listening phase alone, with no hint folded in. The notch
+  /// presentation ladder needs this: `isVoiceListening` is true while a hint is
+  /// showing, so deriving from it makes "Microphone unavailable" render as a
+  /// listening surface and the error is never seen.
+  var isListeningPhase: Bool { voiceProjection.isListening }
   var isVoiceLocked: Bool { voiceProjection.isLocked }
   var voiceTranscript: String { voiceProjection.transcript }
   /// Transient inline status shown only for actionable PTT failures.
@@ -391,8 +396,40 @@ class FloatingControlBarState: NSObject, ObservableObject {
   @Published var usesNotchIsland: Bool = false
   @Published var notchRevealProgress: CGFloat = 1
 
+  /// Display-only mirror of the reply as it streams. Hub voice turns journal
+  /// the exchange only at turn end, so mid-turn the shared timeline has nothing
+  /// to render and the notch would have nothing to show. This is never a second
+  /// transcript store: it is cleared the moment the voice presentation ends, by
+  /// which point the journaled pair owns the exchange (INV-CHAT-1).
+  @Published var liveVoiceAssistantText: String = ""
+
+  /// One-shot notch hint that lives outside the voice projection, for states the
+  /// reducer does not own — PTT blocked by the usage limit, for instance. The
+  /// notch's hint presentation falls back to this when the projection-derived
+  /// hint is empty.
+  @Published private(set) var transientHintText: String = ""
+  private var transientHintClearTask: Task<Void, Never>?
+
+  func flashHint(_ text: String, for seconds: TimeInterval = 3) {
+    transientHintText = text
+    transientHintClearTask?.cancel()
+    transientHintClearTask = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(seconds))
+      guard !Task.isCancelled else { return }
+      self?.transientHintText = ""
+    }
+  }
+
   private func applyVoiceProjection(_ projection: VoiceTurnUIProjection) {
+    // A new hold is a new turn: drop the previous turn's streamed reply so it
+    // cannot flash underneath the fresh question.
+    if projection.isListening, !voiceProjection.isListening {
+      liveVoiceAssistantText = ""
+    }
     voiceProjection = projection
+    if !isVoicePresentationActive {
+      liveVoiceAssistantText = ""
+    }
   }
 
   /// Whether the current query originated from voice (PTT). Used to decide

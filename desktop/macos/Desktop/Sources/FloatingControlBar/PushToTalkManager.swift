@@ -643,12 +643,7 @@ class PushToTalkManager: ObservableObject {
     lastInterimText = ""
     currentContextSnapshot = nil
 
-    // Play start-of-PTT sound
-    if ShortcutSettings.shared.pttSoundsEnabled {
-      let sound = NSSound(named: "Funk")
-      sound?.volume = 0.3
-      sound?.play()
-    }
+    PTTCue.start()
 
     let mode = currentPTTMode()
     AnalyticsManager.shared.floatingBarPTTStarted(mode: mode)
@@ -683,12 +678,7 @@ class PushToTalkManager: ObservableObject {
     }
     isCurrentSessionFollowUp = barState?.showingAIResponse == true
 
-    // Play start-of-PTT sound for locked mode
-    if ShortcutSettings.shared.pttSoundsEnabled {
-      let sound = NSSound(named: "Funk")
-      sound?.volume = 0.3
-      sound?.play()
-    }
+    PTTCue.start()
 
     let mode = currentPTTMode()
     AnalyticsManager.shared.floatingBarPTTStarted(mode: mode)

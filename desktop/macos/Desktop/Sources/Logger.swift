@@ -576,7 +576,8 @@ struct DesktopErrorTelemetryDescriptor: Equatable {
 /// Bounded, non-PII fields that may accompany a shared `logError` Sentry event.
 /// Callers must construct these from enums, booleans, and numeric measurements;
 /// paths, exception messages, identifiers, and user content do not belong here.
-struct DesktopErrorDiagnosticContext {
+// ponytail: values are enums/bools/numbers by contract above, so the Any is inert.
+struct DesktopErrorDiagnosticContext: @unchecked Sendable {
   let values: [String: Any]
 
   init(_ values: [String: Any]) {

@@ -62,11 +62,21 @@ final class DebouncedSearchCoordinator: ObservableObject {
   }
 }
 
-/// Shared search chrome for desktop list pages.
+/// The one search field for the desktop app.
+///
+/// A capsule that brightens its fill and ring while focused, matching the chip
+/// and segmented-control language so a header row of mixed controls reads as
+/// one set. Focus is owned here rather than by each page: every call site wants
+/// the same ring, and none of them had a second use for the state.
 struct OmiSearchField: View {
   let placeholder: String
   @Binding var text: String
   var isLoading = false
+  /// Overrides the spoken label when the placeholder reads poorly aloud
+  /// (trailing ellipses, abbreviations).
+  var accessibilityLabel: String? = nil
+
+  @FocusState private var isFocused: Bool
 
   var body: some View {
     HStack(spacing: OmiSpacing.sm) {
@@ -86,6 +96,8 @@ struct OmiSearchField: View {
         .textFieldStyle(.plain)
         .scaledFont(size: OmiType.body)
         .foregroundStyle(OmiColors.textPrimary)
+        .focused($isFocused)
+        .accessibilityLabel(accessibilityLabel ?? placeholder)
 
       if !text.isEmpty {
         Button {
@@ -101,12 +113,18 @@ struct OmiSearchField: View {
       }
     }
     .padding(.horizontal, OmiSpacing.md)
-    .frame(minHeight: 44)
-    .omiControlSurface(
-      fill: OmiColors.backgroundSecondary,
-      radius: 16,
-      stroke: OmiColors.border.opacity(0.18)
+    .frame(minHeight: OmiChrome.controlHeight)
+    .background(
+      Capsule(style: .continuous)
+        .fill(Color.white.opacity(isFocused ? 0.10 : 0.06))
+        .overlay(
+          Capsule(style: .continuous)
+            .stroke(Color.white.opacity(isFocused ? 0.22 : 0.08), lineWidth: 1)
+        )
     )
+    .contentShape(Capsule(style: .continuous))
+    .onTapGesture { isFocused = true }
+    .omiAnimation(.easeOut(duration: 0.15), value: isFocused)
     .accessibilityElement(children: .contain)
   }
 }

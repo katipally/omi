@@ -14,6 +14,11 @@ package enum OmiChrome {
   package static let badgeRadius: CGFloat = 6
   /// Progress bars, underline indicators, hairline strips.
   package static let stripRadius: CGFloat = 3
+
+  /// One height for every control that can sit in a header row — search fields,
+  /// filter chips, icon buttons, segmented tracks. Sharing it is what keeps a
+  /// row of mixed controls sitting on the same line.
+  package static let controlHeight: CGFloat = 40
 }
 
 private struct OmiPanelModifier: ViewModifier {

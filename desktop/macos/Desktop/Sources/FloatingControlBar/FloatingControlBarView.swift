@@ -116,7 +116,7 @@ struct FloatingControlBarView: View {
         ? FloatingControlBarWindow.notchCompactSideWidth
         : FloatingControlBarWindow.notchActiveSideWidth
     }
-    if showingNotchThinking {
+    if showingNotchThinking || showingNotchSpeaking {
       return FloatingControlBarWindow.notchThinkingSideWidth
     }
     if agentPills.pills.isEmpty && !state.isVoiceListening {
@@ -511,18 +511,40 @@ struct FloatingControlBarView: View {
     .frame(width: notchChromeMorphWidth)
   }
 
+  /// The notch "speaking" state: Omi's voice response is actually playing, so
+  /// the orb has TTS audio to react to. Distinct from `showingNotchThinking`,
+  /// which covers only the committed-but-silent part of the turn.
+  private var showingNotchSpeaking: Bool {
+    state.isVoiceResponseActive
+      && !state.showingAIConversation
+      && !state.isVoiceListening
+  }
+
+  private var notchOrbMode: NotchVoiceOrb.Mode? {
+    NotchVoiceOrb.Mode.current(
+      listening: showingNotchWaveform,
+      speaking: showingNotchSpeaking,
+      thinking: showingNotchThinking
+    )
+  }
+
   private var notchAgentLobe: some View {
     HStack(spacing: 0) {
-      if showingNotchWaveform {
-        VoiceWaveformBars(isActive: true)
-          .scaleEffect(0.72)
-          .frame(width: 28, height: 15)
-          .frame(width: 38, height: 27)
-      } else if showingNotchThinking {
-        NotchThinkingMark()
-          .frame(width: 24, height: 24)
-          .frame(width: notchSideWidth, height: notchChromeHeight, alignment: .trailing)
-          .padding(.trailing, OmiSpacing.hairline)
+      if let orbMode = notchOrbMode {
+        // One orb instance across the whole turn: listening bars morph into the
+        // spinning ring and back into bars for Omi's own voice, in place. A
+        // branch per phase here would cross-fade separate views instead.
+        NotchVoiceOrb(mode: orbMode)
+          .frame(
+            width: orbMode == .listening ? 38 : 24,
+            height: orbMode == .listening ? 27 : 24
+          )
+          .frame(
+            width: orbMode == .listening ? 38 : notchSideWidth,
+            height: orbMode == .listening ? 27 : notchChromeHeight,
+            alignment: orbMode == .listening ? .center : .trailing
+          )
+          .padding(.trailing, orbMode == .listening ? 0 : OmiSpacing.hairline)
       } else {
         ZStack(alignment: .trailing) {
           // The Omi mark always belongs to the compact notch header.

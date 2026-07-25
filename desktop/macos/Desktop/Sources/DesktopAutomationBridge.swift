@@ -793,16 +793,21 @@ final class DesktopAutomationActionRegistry {
     // dev-resettable (the criterion's second half) without driving real LLM usage.
     register(
       name: "reset_usage_limiter",
-      summary: "Reset the free-tier monthly chat usage-limiter counter (dev-resettable proof) — CHAT-05. Non-prod only."
-    ) { _ in
+      summary:
+        "Reset the free-tier monthly chat usage-limiter counter (dev-resettable proof) — CHAT-05. Optional bypass=true|false holds the limiter open for a QA pass. Non-prod only.",
+      params: ["bypass"]
+    ) { params in
       guard AppBuild.isNonProduction else {
         return ["error": "reset_usage_limiter is disabled on production bundles"]
       }
+      let bypass = params["bypass"].map { $0.lowercased() == "true" }
       return await MainActor.run {
         let limiter = FloatingBarUsageLimiter.shared
         limiter.reset()
+        if let bypass { limiter.debugBypassLimit = bypass }
         return [
           "reset": "true",
+          "bypass": limiter.debugBypassLimit ? "true" : "false",
           "is_limit_reached": limiter.isLimitReached ? "true" : "false",
           "remaining_queries": "\(limiter.remainingQueries)",
         ]
@@ -1600,8 +1605,9 @@ final class DesktopAutomationActionRegistry {
     // turn sets; non-prod bridge only. state = idle|listening|thinking|answering.
     register(
       name: "debug_bar_state",
-      summary: "Force floating-bar state: idle|listening|thinking|answering (visual verification)",
-      params: ["state"]
+      summary:
+        "Force floating-bar state: idle|listening|thinking|answering (visual verification). Optional text= fills the streamed reply so the notch reveal and its grow can be exercised without a mic.",
+      params: ["state", "text"]
     ) { params in
       let s = (params["state"] ?? "thinking").lowercased()
       guard let debugState = VoiceTurnDebugPresentationState(rawValue: s) else {
@@ -1612,6 +1618,9 @@ final class DesktopAutomationActionRegistry {
       if s != "idle", !mgr.isVisible { mgr.show() }
       guard VoiceTurnCoordinator.shared.applyDebugPresentationState(debugState) else {
         return ["error": "a non-debug voice turn is active"]
+      }
+      if let text = params["text"], !text.isEmpty, s == "answering" {
+        bar.liveVoiceAssistantText = text
       }
       return ["state": s, "usesNotchIsland": bar.usesNotchIsland ? "true" : "false"]
     }
@@ -1836,6 +1845,34 @@ final class DesktopAutomationActionRegistry {
           ?? ChatDraftStore.shared.text(for: .mainChat(contextID: "omi:default")),
         "floating": FloatingControlBarManager.shared.barState?.aiInputText
           ?? ChatDraftStore.shared.text(for: .floatingMain),
+      ]
+    }
+
+    register(
+      name: "send_main_draft",
+      summary:
+        "Send the main composer's draft through the real send path (non-prod). Exercises draft clearing on accept and restoration on refusal.",
+      params: ["text"],
+      category: "chat",
+      surfaces: ["main_chat"],
+      safety: "local",
+      examples: ["./scripts/omi-ctl action send_main_draft text=hello"]
+    ) { params in
+      guard AppBuild.isNonProduction else {
+        return ["error": "send_main_draft is disabled on production bundles"]
+      }
+      guard let provider = ChatProvider.mainInstance else {
+        return ["error": "no main chat provider"]
+      }
+      if let text = params["text"] {
+        await MainActor.run { provider.draftText = text }
+      }
+      let draft = await MainActor.run { provider.draftText }
+      guard !draft.isEmpty else { return ["error": "main draft is empty"] }
+      let sent = await provider.sendMainDraft(draft)
+      return [
+        "sent": sent ?? "",
+        "draft_after": await MainActor.run { provider.draftText },
       ]
     }
 

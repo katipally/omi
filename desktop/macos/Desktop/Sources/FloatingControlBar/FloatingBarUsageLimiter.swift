@@ -74,7 +74,15 @@ final class FloatingBarUsageLimiter: ObservableObject {
     UserDefaults.standard.removeObject(forKey: Self.cachedPlanKey)
   }
 
+  /// Non-production escape hatch so a QA pass can keep exercising voice turns
+  /// after hitting the free-tier ceiling. Only ever set by the automation
+  /// bridge, which is itself gated on a non-production bundle.
+  var debugBypassLimit = false
+
   var isLimitReached: Bool {
+    if debugBypassLimit {
+      return false
+    }
     // BYOK users pay their own LLM bill and are never limited. Honor local
     // BYOK state so a heartbeat-lagged server quota (allowed=false right
     // after activation) can't block chat for a fully-configured BYOK user.

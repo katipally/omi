@@ -55,6 +55,22 @@ final class FloatingBarUsageLimiterTests: XCTestCase {
     XCTAssertEqual(limiter.remainingQueries, 0)
   }
 
+  func testDebugBypassHoldsTheLimiterOpenForAQAPass() throws {
+    let limiter = FloatingBarUsageLimiter()
+    let quota = try makeQuota(plan: "Free", used: 30, limit: 30, percent: 100, allowed: true)
+    limiter.applyQuota(quota)
+    XCTAssertTrue(limiter.isLimitReached)
+
+    limiter.debugBypassLimit = true
+    XCTAssertFalse(limiter.isLimitReached)
+
+    // The bypass must not rewrite the underlying quota — clearing it restores
+    // the real state rather than leaving the tester with a fake allowance.
+    limiter.debugBypassLimit = false
+    XCTAssertTrue(limiter.isLimitReached)
+    XCTAssertEqual(limiter.remainingQueries, 0)
+  }
+
   func testRecordQueryPushesToLimit() throws {
     let limiter = FloatingBarUsageLimiter()
     let quota = try makeQuota(plan: "Free", used: 29, limit: 30, percent: 96, allowed: true)

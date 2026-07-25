@@ -24,6 +24,33 @@ final class HomeStageCollapseCatcherTests: XCTestCase {
     XCTAssertTrue(HomeStageMode.collapseCatcherActive(mode: .connect, resting: .hub))
     XCTAssertTrue(HomeStageMode.collapseCatcherActive(mode: .connect, resting: .chat))
   }
+
+  func testLandingNeverGetsACatcherLikeTheHub() {
+    // The landing is a base surface, not an overlay. A catcher over it would
+    // invert the gesture: a stray click or Esc would *open* the chat.
+    XCTAssertFalse(HomeStageMode.collapseCatcherActive(mode: .landing, resting: .chat))
+    XCTAssertFalse(HomeStageMode.collapseCatcherActive(mode: .landing, resting: .hub))
+    XCTAssertFalse(HomeStageMode.collapseCatcherActive(mode: .landing, resting: .landing))
+  }
+}
+
+final class HomeStageLandingPresentationTests: XCTestCase {
+  func testLandingReportsItselfToAutomation() {
+    // `omi-ctl state` distinguishes the landing from the hub, so a run can
+    // assert Home actually opened on the landing rather than skipping it.
+    XCTAssertEqual(HomeStageMode.landing.automationLabel, "landing")
+    XCTAssertEqual(HomeStageMode.hub.automationLabel, "hub")
+    XCTAssertEqual(HomeStageMode.chat.automationLabel, "chat")
+    XCTAssertEqual(HomeStageMode.connect.automationLabel, "connect")
+  }
+
+  func testLandingCentersItselfInsteadOfTakingTheHubTopBias() {
+    // The landing is vertically centered by its own spacers; inheriting the
+    // hub's top padding would push the hero off-center.
+    XCTAssertEqual(HomeStageMode.landing.topPadding(hub: 8), 0)
+    XCTAssertEqual(HomeStageMode.hub.topPadding(hub: 8), 8)
+    XCTAssertEqual(HomeStageMode.chat.topPadding(hub: 8), 0)
+  }
 }
 
 final class HomeHistoryPresentationPolicyTests: XCTestCase {

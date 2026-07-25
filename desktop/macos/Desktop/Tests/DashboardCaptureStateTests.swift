@@ -52,6 +52,7 @@ final class DashboardCaptureStateTests: XCTestCase {
   func testListeningPillShowsAndTogglesCaptureMode() throws {
     let source = try dashboardSource()
     let logic = try captureLogicSource()
+    let controls = try homeStatusControlsSource()
 
     XCTAssertTrue(source.contains("@AppStorage(\"systemAudioCaptureMode\")"))
     XCTAssertTrue(source.contains("private var listeningModeTitle: String"))
@@ -59,12 +60,30 @@ final class DashboardCaptureStateTests: XCTestCase {
     XCTAssertTrue(source.contains("HomeListeningStatusButton("))
     XCTAssertTrue(source.contains("modeAction: toggleListeningMode"))
     XCTAssertTrue(logic.contains("AssistantSettings.shared.systemAudioCaptureMode = nextMode"))
-    XCTAssertTrue(source.contains("Image(systemName: isMeetingsOnly ? \"person.2.fill\" : \"person.fill\")"))
-    XCTAssertTrue(source.contains("private var modeIconColor: Color"))
-    XCTAssertTrue(source.contains(".frame(height: 34)"))
-    XCTAssertFalse(source.contains("Image(systemName: isMeetingsOnly ? \"person.2.fill\" : \"infinity\")"))
-    XCTAssertFalse(source.contains("Circle()\n                    .fill(status.indicator)"))
-    XCTAssertFalse(source.contains("OmiColors.purplePrimary"))
+    XCTAssertTrue(controls.contains(".frame(height: 34)"))
+    XCTAssertFalse(controls.contains("OmiColors.purplePrimary"))
+  }
+
+  /// The chip is a fixed size and no longer reveals a second button on hover —
+  /// a header control that resizes under the pointer makes the whole bar twitch.
+  /// The mode toggle moved to a right-click menu, which is invisible to
+  /// VoiceOver and Full Keyboard Access, so it must also be exposed as a named
+  /// accessibility action or the toggle becomes pointer-only.
+  func testListeningChipIsFixedSizeAndKeepsTheModeToggleReachable() throws {
+    let controls = try homeStatusControlsSource()
+
+    XCTAssertTrue(
+      controls.contains(".contextMenu {"),
+      "The listening mode toggle lives in a right-click menu")
+    XCTAssertTrue(
+      controls.contains(".accessibilityAction(named:"),
+      "A right-click-only toggle is unreachable by assistive tech without a named action")
+    XCTAssertFalse(
+      controls.contains("if isHovering {\n        Rectangle()"),
+      "The chip must not reveal a divider and second button on hover — it resizes the header")
+    XCTAssertFalse(
+      controls.contains("private var modeIconColor: Color"),
+      "The hover-only mode icon is gone along with the reveal")
   }
 
   func testRedesignedHomeUsesResponsiveStageSizing() throws {
@@ -315,17 +334,41 @@ final class DashboardCaptureStateTests: XCTestCase {
       dashboard.contains(".onExitCommand"),
       "Home overlays must not rely on onExitCommand — it requires focus the overlays never receive"
     )
+    // Hoisted sheets get their Escape catcher from the shell, mounted with the
+    // card, rather than each page modifier mounting its own.
     XCTAssertTrue(
-      apps.contains("OverlayModalEscapeCatcher {\n              log(\"DISMISSABLE_SHEET: Escape pressed"))
+      normalizedWhitespace(try desktopHomeSource())
+        .contains("OverlayModalEscapeCatcher { modalState.dismiss()"),
+      "The shell must mount the shared Escape catcher alongside the hoisted modal card")
 
     // While an overlay is up, the content underneath must be hidden from
     // VoiceOver / Full Keyboard Access and the panel marked as modal.
     XCTAssertTrue(dashboard.contains("private var isHomeModalPresented: Bool"))
     XCTAssertTrue(dashboard.contains(".accessibilityHidden(isHomeModalPresented)"))
     XCTAssertTrue(dashboard.contains(".accessibilityAddTraits(.isModal)"))
-    XCTAssertTrue(apps.contains(".accessibilityHidden(isPresented)"))
-    XCTAssertTrue(apps.contains(".accessibilityHidden(item != nil)"))
-    XCTAssertTrue(apps.contains(".accessibilityAddTraits(.isModal)"))
+    // Both `dismissableSheet` spellings hoist their card to the shell so one
+    // frosted backdrop covers the whole window. That moves the modal
+    // accessibility contract to the shell — it does not retire it. Assert it at
+    // its new owner: the hoisted card is the only thing standing between
+    // assistive tech and the window "hidden" behind the blur.
+    let shell = try desktopHomeSource()
+    XCTAssertTrue(
+      shell.contains(".accessibilityHidden(modalState.isPresenting)"),
+      "The shell must hide blurred content from VoiceOver while a hoisted modal is up")
+    XCTAssertTrue(
+      shell.contains(".accessibilityAddTraits(.isModal)"),
+      "The hoisted modal card must report itself as modal")
+    XCTAssertFalse(
+      apps.contains("Color.black.opacity(0.3)"),
+      "Page-level scrims must be gone once modals hoist — two scrims would double-dim")
+    for modifier in ["DismissableSheetModifier", "DismissableSheetItemModifier"] {
+      XCTAssertTrue(
+        apps.contains(modifier),
+        "\(modifier) must still exist")
+    }
+    XCTAssertEqual(
+      apps.components(separatedBy: "ModalPresentationState.shared.present(").count - 1, 2,
+      "Both the bool- and item-driven sheet paths must hoist, or one page shows two modal styles")
 
     // The close control must be a real, labeled button — not a tap gesture.
     XCTAssertTrue(apps.contains("var accessibilityLabel: String = \"Close\""))
@@ -362,6 +405,11 @@ final class DashboardCaptureStateTests: XCTestCase {
 
   private func appsSource() throws -> String {
     try source(named: "AppsPage.swift")
+  }
+
+  // omi-test-quality: source-inspection -- static contract: the Capture/Listening chips are SwiftUI views whose hover and context-menu wiring cannot be driven without a booted view
+  private func homeStatusControlsSource() throws -> String {
+    try source(named: "HomeStatusControls.swift")
   }
 
   private func source(named fileName: String) throws -> String {

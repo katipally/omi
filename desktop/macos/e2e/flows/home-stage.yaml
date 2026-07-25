@@ -1,12 +1,14 @@
 version: 2
 name: home-stage
 tier: 2
-description: Redesigned Home stage transitions (hub/chat/connect) via automation bridge
+description: Redesigned Home stage transitions (landing/chat/connect) via automation bridge
 app: non-prod
 covers:
   - desktop/macos/Desktop/Sources/MainWindow/Components/ChatMessagesView.swift
   - desktop/macos/Desktop/Sources/MainWindow/Pages/DashboardPage.swift
   - desktop/macos/Desktop/Sources/MainWindow/Pages/HomeStagePresentation.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Pages/HomeLanding.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Pages/HomeStatusControls.swift
   - desktop/macos/Desktop/Sources/MainWindow/Dashboard/HomeSuggestionsStore.swift
   - desktop/macos/Desktop/Sources/MainWindow/Dashboard/HomeKnowsComposer.swift
   - desktop/macos/Desktop/Sources/MainWindow/MainChatNavigationRequest.swift
@@ -30,12 +32,13 @@ steps:
     wait:
       state.selectedTabIndex: 0
 
+  # Home opens on the landing hero. No action here on purpose: the point is
+  # that arriving at Dashboard rests on `landing` without anything nudging it,
+  # so a background history restore skipping the landing fails the flow.
   - id: S2
-    name: Collapse to the empty-history resting hub
-    bridge.action:
-      name: home_close_panel
+    name: Home opens on the landing hero
     wait:
-      state.homeMode: hub
+      state.homeMode: landing
 
   - id: S3
     name: Open inline chat

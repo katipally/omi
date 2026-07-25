@@ -6,22 +6,25 @@ final class MemoryGraphRevisitTests: XCTestCase {
   func testHomeMemoriesUsePersistentGraphViewModel() throws {
     let graph = try source(at: "Sources/MainWindow/Pages/MemoryGraph/MemoryGraphPage.swift")
     let home = try source(at: "Sources/MainWindow/DesktopHomeView.swift")
+    // The hub tabs were split out of DesktopHomeView to keep it under the
+    // line-count threshold; MemoryHubPage's wiring lives here now.
+    let hub = try source(at: "Sources/MainWindow/HubPages.swift")
     let container = try source(at: "Sources/ViewModelContainer.swift")
 
     XCTAssertFalse(graph.contains("@StateObject private var viewModel = MemoryGraphViewModel()"))
     XCTAssertTrue(graph.contains("@ObservedObject var viewModel: MemoryGraphViewModel"))
     XCTAssertTrue(container.contains("let memoryGraphViewModel = MemoryGraphViewModel()"))
     XCTAssertTrue(container.contains("memoryGraphViewModel.resetSessionState()"))
-    XCTAssertTrue(home.contains("graphViewModel: viewModelContainer.memoryGraphViewModel"))
+    XCTAssertTrue(hub.contains("graphViewModel: viewModelContainer.memoryGraphViewModel"))
     // The Brain Map moved from an inline Memories card to its own hub tab, still
     // driven by the persistent, container-owned view model.
-    XCTAssertTrue(home.contains("MemoryGraphPage(viewModel: viewModelContainer.memoryGraphViewModel)"))
-    // Static wiring tripwire: the Memory menu routes each destination into the
-    // same full-width surface while the graph keeps the shared background.
+    XCTAssertTrue(hub.contains("MemoryGraphPage(viewModel: viewModelContainer.memoryGraphViewModel)"))
+    // Static wiring tripwire: the Memory switcher routes each destination into
+    // the same full-width surface while the graph keeps the shared background.
     XCTAssertFalse(home.contains("constrainedListPage(MemoryHubPage"))
     XCTAssertFalse(home.contains("listContentWidth"))
-    XCTAssertTrue(home.contains("switch destination"))
-    XCTAssertTrue(home.contains("MemoryGraphPage(viewModel: viewModelContainer.memoryGraphViewModel)"))
+    XCTAssertFalse(hub.contains("listContentWidth"))
+    XCTAssertTrue(hub.contains("switch destination"))
     XCTAssertTrue(graph.contains("scnView.backgroundColor = NSColor(OmiColors.backgroundPrimary)"))
   }
 

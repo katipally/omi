@@ -7,14 +7,24 @@ covers:
   - desktop/macos/Desktop/Sources/OmiApp.swift
   - desktop/macos/Desktop/Sources/MainWindow/SidebarView.swift
   - desktop/macos/Desktop/Sources/MainWindow/DesktopHomeView.swift
+  - desktop/macos/Desktop/Sources/MainWindow/HubPages.swift
   - desktop/macos/Desktop/Sources/MainWindow/DesktopTopBar.swift
+  - desktop/macos/Desktop/Sources/MainWindow/SettingsSidebar.swift
+  - desktop/macos/Desktop/Sources/Theme/OmiSegmentedControl.swift
+  - desktop/macos/Desktop/Sources/Theme/OmiChip.swift
+  - desktop/macos/Desktop/Sources/Theme/OmiIconButton.swift
+  - desktop/macos/Desktop/Sources/Theme/OmiFilterChip.swift
+  - desktop/macos/Desktop/Sources/Theme/OmiPageHeader.swift
+  - desktop/macos/Desktop/Sources/Theme/OmiFloatingStatusPill.swift
+  - desktop/macos/Desktop/Sources/Theme/OmiChrome.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Components/OmiSearchField.swift
 preconditions:
   - auth_ready
 
 steps:
   - id: S1
     name: Verify Home tab loads
-    do: "Verify the app is on the Home tab. Top nav bar should show 4 buttons: Home, Memory, Tasks, Apps. Right side should show Capture status, Listening status, and Settings gear icon. Home content should include chat input area and insight cards."
+    do: "Verify the app is on the Home tab. The header has two rows: the Omi mark and wordmark centered on top with a Settings chip on the left (clear of the traffic lights) and Capture / Listening on the right, and a segmented control below with 4 segments: Home, Memory, Tasks, Apps. Home content should show the landing hero (rotating Omi mark, 'Ask omi anything') with the composer beneath it."
     expect:
       interactive_count: { min: 8 }
       text_visible:
@@ -49,7 +59,7 @@ steps:
 
   - id: S5
     name: Open Settings via gear icon
-    do: "Click the Settings gear icon (agent-swift find text 'gearshape' click). Verify Settings page opens showing section names: General, Account & Plan, Transcription, Floating Bar, Notifications & Privacy, Rewind, Shortcuts, Advanced, About."
+    do: "Click the Settings chip on the left of the header (agent-swift find text 'Settings' click). Verify the frosted settings sidebar slides in from the left showing section names: General, Account & Plan, Transcription, Floating Bar, Notifications & Privacy, Rewind, Shortcuts, Advanced, About."
     expect:
       interactive_count: { min: 9 }
       text_visible:
@@ -58,7 +68,7 @@ steps:
 
   - id: S6
     name: Return to Home from Settings
-    do: "Click the Back button (agent-swift find text 'Back' click) to return from Settings. Verify the Home tab loads with top nav bar visible."
+    do: "Click the 'Back to app' chip at the top of the settings sidebar (agent-swift find text 'Back to app' click). Verify it returns to the tab you came from with the two-row header visible."
     expect:
       text_visible:
         - Home
@@ -72,7 +82,7 @@ steps:
 
   - id: S8
     name: Return to Home
-    do: "Close the Rewind overlay and verify the Home tab is visible with the top nav bar. Click Home in the top nav bar if needed."
+    do: "Click the 'Back' chip in the Rewind header (agent-swift find text 'Back' click) and verify it returns to the tab Rewind was opened from, with the two-row header visible."
     expect:
       text_visible:
         - Home

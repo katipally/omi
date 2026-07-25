@@ -10,6 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DESKTOP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$DESKTOP_DIR/../.." && pwd)"
 KEYVALUE_PY="$SCRIPT_DIR/release-keyvalue.py"
+STAGE_HELPER="$SCRIPT_DIR/qualification-stage.sh"
+# shellcheck source=qualification-stage.sh
+source "$STAGE_HELPER"
 
 KEEP_STACK=0
 AUTOMATIC=0
@@ -27,7 +30,7 @@ Usage:
     [--signed-smoke-result PATH --candidate-gate-result PATH] <vX.Y.Z+BUILD-macos>
 
 Options:
-  --keep-stack   Leave dev-harness stack running on exit (default: make dev-down)
+  --keep-stack   Leave the recorded qualification lease for safe later reclamation
   --automatic    Run richer automatic gates and require this to remain the newest candidate
   --signed-smoke-result PATH  Codemagic signed-artifact smoke evidence (required with --automatic)
   --candidate-gate-result PATH  Digest-bound candidate gate evidence (required with --automatic)
@@ -119,6 +122,14 @@ LAUNCH_LOG=""
 LAUNCH_SIGNAL_FILE=""
 DESKTOP_LAUNCH_PID=""
 QUALIFICATION_SUCCESS=0
+QUALIFICATION_LEASE_ID=""
+QUALIFICATION_LEASE_TOKEN=""
+QUALIFICATION_LEASE_ROOT="${OMI_QUALIFICATION_LEASE_ROOT:-${TMPDIR:-/tmp}/omi-desktop-qualification}"
+QUALIFICATION_RETAINED_RUNS="${OMI_QUALIFICATION_RETAINED_RUNS:-3}"
+QUALIFICATION_RETENTION_AGE_SECONDS="${OMI_QUALIFICATION_RETENTION_AGE_SECONDS:-1209600}"
+QUALIFICATION_CLEANUP_CONTEXT="${OMI_QUALIFICATION_CLEANUP_CONTEXT:-}"
+QUALIFICATION_LOG_DIR=""
+QUALIFICATION_STAGE=""
 # Cold, from-scratch rebuild of the exact tag compiles ~1190 SwiftPM modules
 # (FluidAudio, MarkdownUI, Firebase, ONNX, …) before the named bundle is even
 # packaged/signed/launched. On a self-hosted M1 that first cold build alone runs
@@ -132,13 +143,41 @@ QUALIFICATION_SUCCESS=0
 DESKTOP_PREPARE_WAIT_SECS="${OMI_QUALIFY_PREPARE_WAIT_SECS:-5400}"
 BRIDGE_WAIT_SECS=900
 
+QUALIFICATION_STAGE="$(qualification_stage_create)"
+trap 'qualification_stage_remove "$QUALIFICATION_STAGE"' EXIT
+RELEASE_FILE="$QUALIFICATION_STAGE/release.json"
 gh release view "$RELEASE_TAG" --repo BasedHardware/omi --json tagName,isDraft,isPrerelease,publishedAt,assets,body \
-  > /tmp/desktop-qualification-release.json
+  > "$RELEASE_FILE"
 
-python3 "$KEYVALUE_PY" preflight-release /tmp/desktop-qualification-release.json "$RELEASE_TAG"
+python3 "$KEYVALUE_PY" preflight-release "$RELEASE_FILE" "$RELEASE_TAG"
 
 SHA=$(git -C "$REPO_ROOT" rev-list -n1 "$RELEASE_TAG")
 WORKTREE="$("$SCRIPT_DIR/qualification-swift-cache.sh" prepare "$SHA" "$REPO_ROOT")"
+RUN_SCOPE="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-attempt}-${BASHPID:-$$}"
+RUN_SCOPE="${RUN_SCOPE//[^A-Za-z0-9]/-}"
+QUALIFICATION_LEASE_ID="qualification-${SHA:0:12}-${RUN_SCOPE:0:32}"
+QUALIFICATION_PORT_OFFSET="${OMI_QUALIFICATION_PORT_OFFSET:-}"
+if [[ -z "$QUALIFICATION_PORT_OFFSET" ]]; then
+  QUALIFICATION_PORT_OFFSET="$(python3 - "$SHA" "$QUALIFICATION_LEASE_ID" <<'PY'
+import sys
+import hashlib
+print(1000 + (int(hashlib.sha256(": ".join(sys.argv[1:]).encode()).hexdigest()[:8], 16) % 2000))
+PY
+)"
+fi
+if ! [[ "$QUALIFICATION_PORT_OFFSET" =~ ^[0-9]+$ ]]; then
+  echo "OMI_QUALIFICATION_PORT_OFFSET must be a non-negative integer" >&2
+  exit 2
+fi
+export OMI_QUALIFICATION_LEASE_ROOT="$QUALIFICATION_LEASE_ROOT"
+export OMI_LOCAL_STATE_ROOT="$QUALIFICATION_LEASE_ROOT/state"
+export OMI_LOCAL_INSTANCE="$QUALIFICATION_LEASE_ID"
+export OMI_HARNESS_PORT_OFFSET="$QUALIFICATION_PORT_OFFSET"
+export OMI_AUTOMATION_PORT="$((47777 + QUALIFICATION_PORT_OFFSET))"
+if (( OMI_AUTOMATION_PORT > 65535 )); then
+  echo "OMI_QUALIFICATION_PORT_OFFSET makes OMI_AUTOMATION_PORT invalid: $OMI_AUTOMATION_PORT" >&2
+  exit 2
+fi
 
 # Provision the tag-pinned backend venv so the hermetic stack resolves the
 # locked Python dependencies. The ephemeral Codemagic Mac has no backend venv
@@ -178,7 +217,48 @@ else
   echo "uv not found; dev-harness python resolves via global python3"
 fi
 
-LAUNCH_LOG="$WORKTREE/.qualification-desktop-launch.log"
+LEASE_JSON="$(
+  cd "$WORKTREE"
+  PYTHONPATH="scripts/dev-harness${PYTHONPATH:+:$PYTHONPATH}" python3 -m dev_harness.cli qualification-lease acquire \
+    --lease-id "$QUALIFICATION_LEASE_ID" \
+    --owner-pid "$$" \
+    --port-offset "$QUALIFICATION_PORT_OFFSET" \
+    --retained-runs "$QUALIFICATION_RETAINED_RUNS"
+)"
+QUALIFICATION_LEASE_TOKEN="$(python3 - "$LEASE_JSON" <<'PY'
+import json
+import sys
+print(json.loads(sys.argv[1])["token"])
+PY
+)"
+QUALIFICATION_LOG_DIR="$(python3 - "$LEASE_JSON" <<'PY'
+import json
+import sys
+from pathlib import Path
+print(Path(json.loads(sys.argv[1])["log_dir"]))
+PY
+)"
+LAUNCH_LOG="$QUALIFICATION_LOG_DIR/desktop-launch.log"
+if [[ -n "$QUALIFICATION_CLEANUP_CONTEXT" ]]; then
+  umask 077
+  python3 - "$QUALIFICATION_CLEANUP_CONTEXT" "$QUALIFICATION_LEASE_ID" "$QUALIFICATION_LEASE_TOKEN" "$WORKTREE" "$QUALIFICATION_RETAINED_RUNS" "$QUALIFICATION_RETENTION_AGE_SECONDS" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path, lease_id, token, worktree, retained_runs, retention_age = map(str, sys.argv[1:])
+target = Path(path)
+target.parent.mkdir(parents=True, exist_ok=True)
+target.write_text(json.dumps({
+    "lease_id": lease_id,
+    "token": token,
+    "worktree": worktree,
+    "retained_runs": int(retained_runs),
+    "retention_age_seconds": int(retention_age),
+}, sort_keys=True) + "\n", encoding="utf-8")
+target.chmod(0o600)
+PY
+fi
 
 resolve_automation_port() {
   (
@@ -224,28 +304,11 @@ terminate_qualification_desktop() {
       || true
   fi
 
-  if [[ -d "$app_path" ]]; then
-    pkill -f "$app_path" 2>/dev/null || true
-  fi
-
   if [[ -n "$DESKTOP_LAUNCH_PID" ]]; then
     kill_process_tree "$DESKTOP_LAUNCH_PID"
     wait "$DESKTOP_LAUNCH_PID" 2>/dev/null || true
   fi
 
-  if [[ -n "$WORKTREE" && -d "$WORKTREE" ]]; then
-    pkill -f "$WORKTREE/desktop/macos/run.sh" 2>/dev/null || true
-  fi
-
-  sleep 0.5
-
-  if pgrep -f "$app_path" >/dev/null 2>&1; then
-    echo "qualification cleanup: ${bundle}.app still running; sending SIGKILL" >&2
-    pkill -9 -f "$app_path" 2>/dev/null || true
-  fi
-  if [[ -n "$bundle_id" ]] && pgrep -f "$bundle_id" >/dev/null 2>&1; then
-    pkill -9 -f "$bundle_id" 2>/dev/null || true
-  fi
 }
 
 wait_for_desktop_launch() {
@@ -308,21 +371,45 @@ cleanup() {
     kill_process_tree "$DESKTOP_LAUNCH_PID"
     wait "$DESKTOP_LAUNCH_PID" 2>/dev/null || true
   fi
-  if [[ "$KEEP_STACK" -eq 0 && -d "$WORKTREE" ]]; then
-    (cd "$WORKTREE" && PROVIDER_MODE=offline make dev-down) >/dev/null 2>&1 || true
+  local cleanup_status="not-acquired"
+  if [[ "$KEEP_STACK" -eq 0 && -n "$QUALIFICATION_LEASE_TOKEN" && -d "$WORKTREE" ]]; then
+    (
+      cd "$WORKTREE"
+      export OMI_HARNESS_OWNERSHIP_TOKEN="$QUALIFICATION_LEASE_TOKEN"
+      PYTHONPATH="scripts/dev-harness${PYTHONPATH:+:$PYTHONPATH}" python3 -m dev_harness.cli qualification-lease release \
+        --lease-id "$QUALIFICATION_LEASE_ID" \
+        --token "$QUALIFICATION_LEASE_TOKEN" \
+        --retained-runs "$QUALIFICATION_RETAINED_RUNS" \
+        --retention-age-seconds "$QUALIFICATION_RETENTION_AGE_SECONDS"
+    ) >/dev/null 2>&1 && cleanup_status="released" || cleanup_status="release-failed"
+  elif [[ "$KEEP_STACK" -eq 1 && -n "$QUALIFICATION_LEASE_TOKEN" ]]; then
+    echo "qualification stack retained under lease $QUALIFICATION_LEASE_ID for safe later reclamation"
+    cleanup_status="retained"
   fi
+  if [[ -n "$QUALIFICATION_LOG_DIR" ]]; then
+    python3 - "$QUALIFICATION_LOG_DIR/cleanup.json" "$QUALIFICATION_LEASE_ID" "$cleanup_status" "$exit_code" <<'PY'
+import json
+import sys
+from pathlib import Path
+path, lease_id, status, exit_code = sys.argv[1:]
+Path(path).write_text(json.dumps({"lease_id": lease_id, "cleanup_status": status, "exit_code": int(exit_code)}, sort_keys=True) + "\n", encoding="utf-8")
+PY
+  fi
+  qualification_stage_remove "$QUALIFICATION_STAGE" || true
   exit "$exit_code"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
-terminate_qualification_desktop "$BUNDLE"
 "$SCRIPT_DIR/prepare-qualification-profile.sh" "$BUNDLE"
 LAUNCH_SIGNAL_FILE="$WORKTREE/.qualification-desktop-launched"
 rm -f "$LAUNCH_SIGNAL_FILE"
 
 (
   cd "$WORKTREE"
-  PROVIDER_MODE=offline make dev-up
+  OMI_HARNESS_OWNERSHIP_TOKEN="$QUALIFICATION_LEASE_TOKEN" PROVIDER_MODE=offline make dev-up
   OMI_DESKTOP_LAUNCH_SIGNAL_FILE="$LAUNCH_SIGNAL_FILE" OMI_SKIP_SETTINGS_SEED=1 \
     make desktop-run-local DESKTOP_APP_NAME="$BUNDLE" DESKTOP_USER=alice
 ) >"$LAUNCH_LOG" 2>&1 &
@@ -368,7 +455,10 @@ FAULT_EVIDENCE=""
 if [[ "$AUTOMATIC" -eq 1 ]]; then
   (
     cd "$WORKTREE/desktop/macos"
-    ./scripts/desktop-core-harness.sh --fault-suite --port "$((AUTOMATION_PORT + 1))"
+    OMI_FAULT_PORT="$((AUTOMATION_PORT + 2))" \
+      OMI_FAULT_STATE_DIR="$QUALIFICATION_LEASE_ROOT/state/$QUALIFICATION_LEASE_ID/fault" \
+      OMI_FAULT_OWNERSHIP_TOKEN="$QUALIFICATION_LEASE_TOKEN" \
+      ./scripts/desktop-core-harness.sh --fault-suite --port "$((AUTOMATION_PORT + 1))"
   )
   FAULT_EVIDENCE=$(ls -td "$WORKTREE/desktop/macos/.harness/desktop-core"/*-fault 2>/dev/null | head -1)
   if [[ -z "$FAULT_EVIDENCE" || ! -f "$FAULT_EVIDENCE/manifest.json" ]]; then
@@ -392,7 +482,7 @@ if [[ "$GITHUB_ACTIONS_ARTIFACT" -eq 1 ]]; then
 fi
 
 STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-EVIDENCE_FILE="/tmp/qualification-evidence-${VERSION}-$$.json"
+EVIDENCE_FILE="$QUALIFICATION_STAGE/qualification-evidence.json"
 cp "$EVIDENCE/manifest.json" "$EVIDENCE_FILE"
 
 if [[ "$AUTOMATIC" -eq 1 ]]; then
@@ -423,14 +513,15 @@ fi
 # part of the asset identity and uploads never clobber an earlier observation.
 EVIDENCE_SHA=$(shasum -a 256 "$EVIDENCE_FILE" | awk '{print $1}')
 ASSET="qualification-evidence-${VERSION}-${EVIDENCE_SHA}.json"
-mv "$EVIDENCE_FILE" "/tmp/$ASSET"
+ASSET_FILE="$QUALIFICATION_STAGE/$ASSET"
+mv "$EVIDENCE_FILE" "$ASSET_FILE"
 
-BODY_FILE=/tmp/desktop-qualification-release-body.md
+BODY_FILE="$QUALIFICATION_STAGE/release-body.md"
 gh release view "$RELEASE_TAG" --repo BasedHardware/omi --json body --jq .body > "$BODY_FILE"
 
 python3 "$KEYVALUE_PY" update-qualified-beta "$BODY_FILE" "$STAMP" "$SHA" "$ASSET"
 
-gh release upload "$RELEASE_TAG" "/tmp/$ASSET" --repo BasedHardware/omi
+gh release upload "$RELEASE_TAG" "$ASSET_FILE" --repo BasedHardware/omi
 gh release edit "$RELEASE_TAG" --repo BasedHardware/omi --notes-file "$BODY_FILE"
 
 QUALIFICATION_SUCCESS=1

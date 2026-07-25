@@ -8,6 +8,9 @@ covers:
   - desktop/macos/Desktop/Sources/MainWindow/SidebarView.swift
   - desktop/macos/Desktop/Sources/MainWindow/DesktopHomeView.swift
   - desktop/macos/Desktop/Sources/MainWindow/DesktopTopBar.swift
+  - desktop/macos/Desktop/Sources/Theme/OmiSegmentedControl.swift
+  - desktop/macos/Desktop/Sources/Theme/OmiFieldStyle.swift
+  - desktop/macos/Desktop/Sources/Theme/OmiIconButton.swift
 preconditions:
   - auth_ready
 

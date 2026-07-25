@@ -199,6 +199,16 @@ struct FloatingBarNotification: Identifiable, Equatable {
     self.screenshotData = screenshotData
   }
 
+  /// Cards that need a decision from the user stay until they get one; the rest
+  /// time out. Keyed on the same `assistantId` the notch card switches on, so a
+  /// variant can never render an action pair that silently disappears.
+  var autoDismisses: Bool {
+    switch assistantId {
+    case "reach_error", NotchMoment.receiptAssistantId, NotchMoment.endAssistantId: return false
+    default: return true
+    }
+  }
+
   static func == (lhs: FloatingBarNotification, rhs: FloatingBarNotification) -> Bool {
     lhs.id == rhs.id
   }

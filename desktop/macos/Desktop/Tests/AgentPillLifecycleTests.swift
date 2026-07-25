@@ -547,8 +547,9 @@ import XCTest
     XCTAssertTrue(windowSource.contains("state.isNotchHoverMenuVisible ? .openMenuRetention : .activationOnly"))
     XCTAssertTrue(source.contains("isChatChromePinned || shouldShowNotchHoverMenu"))
     XCTAssertTrue(source.contains("static let maxAgents = FloatingControlBarWindow.notchAgentListMaxVisibleAgents"))
-    XCTAssertTrue(source.contains("static let dotDiameterRatio: CGFloat = 0.18"))
-    XCTAssertTrue(source.contains("static let ringRadiusRatio: CGFloat = 0.33"))
+    let markSource = try notchOmiMarkSource()
+    XCTAssertTrue(markSource.contains("static let dotDiameterRatio: CGFloat = 0.18"))
+    XCTAssertTrue(markSource.contains("static let ringRadiusRatio: CGFloat = 0.33"))
     XCTAssertTrue(source.contains("NotchAgentOmiIndicatorView(pills: stackedPills)"))
     XCTAssertTrue(source.contains("NotchOmiMark(dotColors: visiblePills.map"))
     XCTAssertTrue(source.contains("NotchAgentMorphField("))
@@ -1116,9 +1117,9 @@ import XCTest
     XCTAssertTrue(FloatingConversationCloseIntent.userDismissal.cancelsInFlightWork)
     XCTAssertFalse(FloatingConversationCloseIntent.voiceHandoff.cancelsInFlightWork)
 
-    // omi-test-quality: source-inspection -- static contract: the AppKit voice handoff passes the non-cancelling intent.
-    let source = try floatingControlBarWindowSource()
-    XCTAssertTrue(source.contains("window.closeAIConversation(intent: .voiceHandoff)"))
+    // The notch holds no conversation for a voice turn to close, so there is no
+    // longer an AppKit close call to pin. The intent contract asserted above is
+    // what the reducer actually depends on.
   }
 
   func testBeginTurnStopsQueuedLocalSpeechOnBargeIn() throws {
@@ -1889,6 +1890,14 @@ import XCTest
       .deletingLastPathComponent()
       .deletingLastPathComponent()
       .appendingPathComponent("Sources/FloatingControlBar/FloatingControlBarView.swift")
+    return try String(contentsOf: sourceURL, encoding: .utf8)
+  }
+
+  private func notchOmiMarkSource() throws -> String {
+    let sourceURL = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .appendingPathComponent("Sources/FloatingControlBar/Notch/NotchOmiMarkView.swift")
     return try String(contentsOf: sourceURL, encoding: .utf8)
   }
 

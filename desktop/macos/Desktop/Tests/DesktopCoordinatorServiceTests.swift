@@ -586,7 +586,8 @@ final class DesktopCoordinatorServiceTests: XCTestCase {
     let managerSource = try sourceFile("FloatingControlBar/FloatingControlBarWindow.swift")
     let providerSource = try sourceFile("Providers/ChatProvider.swift")
 
-    XCTAssertTrue(managerSource.contains("Default floating/notch chat is a second view over the main chat provider."))
+    XCTAssertTrue(
+      managerSource.contains("The notch renders over the one shared chat provider"))
     XCTAssertTrue(managerSource.contains("historyChatProvider = chatProvider"))
     XCTAssertTrue(managerSource.contains("var sharedFloatingProvider: ChatProvider? { historyChatProvider }"))
     XCTAssertTrue(

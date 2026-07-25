@@ -13,35 +13,14 @@ extension FloatingControlBarManager {
     _ request: FloatingBarPresentationRequest,
     persistEnabledPreference: Bool
   ) {
-    log("FloatingControlBarManager: show() called, window=\(window != nil), isVisible=\(window?.isVisible ?? false)")
     if persistEnabledPreference {
       isEnabled = true
     }
     guard FloatingBarPresentationPolicy.shouldPresent(request: request, isSnoozed: isSnoozed) else {
       return
     }
-    // Reveal on every hidden→present transition (not just once per session):
-    // the island should always grow out of the notch instead of popping in.
-    let shouldPlayNotchReveal =
-      window?.usesNotchIslandForCurrentScreen == true
-      && (window?.isVisible != true || !hasRevealedNotchThisSession)
     hasRevealedNotchThisSession = true
-    window?.normalizeForTemporaryShow()
-    window?.makeKeyAndOrderFront(nil)
-    if shouldPlayNotchReveal {
-      window?.playNotchRevealAnimation()
-    }
-    log("FloatingControlBarManager: show() done, frame=\(window?.frame ?? .zero)")
-
-    // Auto-focus input if AI conversation is open.
-    if let window, window.state.showingAIConversation && !window.state.showingAIResponse {
-      if !window.focusInputField() {
-        // SwiftUI may still be attaching the text view. Retry on its next
-        // layout pass rather than relying on a fixed wall-clock delay.
-        DispatchQueue.main.async { [weak window] in
-          window?.focusInputField()
-        }
-      }
-    }
+    notch.showAll()
+    log("FloatingControlBarManager: presented notch panels (request=\(request))")
   }
 }

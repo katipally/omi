@@ -481,6 +481,8 @@ struct DesktopHomeView: View {
       notification in
       handleAutomationNavigation(notification)
     }
+    // Spawned agents are read here; the notch has no agent surface.
+    .agentTranscriptSheet()
     .onReceive(NotificationCenter.default.publisher(for: .navigateToChat)) { _ in
       // The global shortcut / notch "Ask Omi" opens the continuous chat, which
       // lives on the chat-first home. DashboardPage focuses the input when it's

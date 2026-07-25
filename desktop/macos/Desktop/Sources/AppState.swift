@@ -854,6 +854,12 @@ extension Notification.Name {
   /// Posted to navigate to AI Chat page
   static let navigateToChat = Notification.Name("navigateToChat")
   static let navigateToTasks = Notification.Name("navigateToTasks")
+  /// Show a subagent's transcript in the main window. object: the pill's UUID.
+  /// Agents used to be readable only in the floating bar; the notch has no
+  /// agent surface, so this is the one way in.
+  static let openAgentTranscript = Notification.Name("openAgentTranscript")
+  /// Close the agent transcript sheet (its pill was dismissed under it).
+  static let closeAgentTranscript = Notification.Name("closeAgentTranscript")
   /// Posted by keyboard shortcuts to navigate sidebar. userInfo: ["rawValue": Int]
   static let navigateToSidebarItem = Notification.Name("navigateToSidebarItem")
   /// Posted by Cmd+R to refresh all data (conversations, chat, tasks, memories)

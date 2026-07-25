@@ -222,7 +222,13 @@ struct FloatingControlBarView: View {
   }
 
   private var showingPTTStatusBanner: Bool {
-    !state.pttHintText.isEmpty
+    !notchHintText.isEmpty
+  }
+
+  /// The projection-derived hint, falling back to a one-shot hint posted
+  /// outside a voice turn (e.g. a hold refused by the usage limit).
+  private var notchHintText: String {
+    state.pttHintText.isEmpty ? state.transientHintText : state.pttHintText
   }
 
   /// Omi's reply on the notch: streaming in step with the spoken voice, then
@@ -767,7 +773,7 @@ struct FloatingControlBarView: View {
       Image(systemName: "mic.fill")
         .scaledFont(size: OmiType.caption, weight: .semibold)
         .foregroundColor(.white.opacity(0.9))
-      Text(state.pttHintText)
+      Text(notchHintText)
         .scaledFont(size: 12, weight: .medium)
         .foregroundColor(.white)
         .lineLimit(1)

@@ -484,6 +484,10 @@ final class VoiceTurnCoordinator {
         log(
           "VoiceTurnCoordinator: terminal turn=\(terminal.turnID.description) "
             + "reason=\(terminal.reason.rawValue) route=\(Self.routeLabel(terminal.route))")
+        // Close the turn audibly only when it actually delivered an answer —
+        // a cancel or failure already has its own hint, and an end cue there
+        // would sound like success.
+        if terminal.reason == .success { PTTCue.end() }
         effectHandler?(effect)
       case .staleEventDropped(let turnID, let event):
         DesktopDiagnosticsManager.shared.recordVoiceTurnAnomaly(

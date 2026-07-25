@@ -616,6 +616,9 @@ class PushToTalkManager: ObservableObject {
     log("PushToTalkManager: PTT blocked — monthly free-tier chat limit reached")
     NotificationCenter.default.post(
       name: .showUsageLimitPopup, object: nil, userInfo: ["reason": "ptt"])
+    // Say so on the notch too: the popup can land behind a fullscreen app, and
+    // a hold that silently does nothing reads as a broken mic.
+    barState?.flashHint("Monthly limit reached")
     return true
   }
 
@@ -643,12 +646,7 @@ class PushToTalkManager: ObservableObject {
     lastInterimText = ""
     currentContextSnapshot = nil
 
-    // Play start-of-PTT sound
-    if ShortcutSettings.shared.pttSoundsEnabled {
-      let sound = NSSound(named: "Funk")
-      sound?.volume = 0.3
-      sound?.play()
-    }
+    PTTCue.start()
 
     let mode = currentPTTMode()
     AnalyticsManager.shared.floatingBarPTTStarted(mode: mode)
@@ -683,12 +681,7 @@ class PushToTalkManager: ObservableObject {
     }
     isCurrentSessionFollowUp = barState?.showingAIResponse == true
 
-    // Play start-of-PTT sound for locked mode
-    if ShortcutSettings.shared.pttSoundsEnabled {
-      let sound = NSSound(named: "Funk")
-      sound?.volume = 0.3
-      sound?.play()
-    }
+    PTTCue.start()
 
     let mode = currentPTTMode()
     AnalyticsManager.shared.floatingBarPTTStarted(mode: mode)

@@ -80,7 +80,11 @@ final class PTTAudioCaptureRaceTests: XCTestCase {
   func testFloatingBarRendersPTTHintText() throws {
     let view = try source(relativePath: "Sources/FloatingControlBar/FloatingControlBarView.swift")
     XCTAssertTrue(view.contains("state.pttHintText"))
-    XCTAssertTrue(view.contains("Text(state.pttHintText)"))
+    // The banner renders the projection hint, falling back to a one-shot hint
+    // posted outside a voice turn (e.g. a hold refused by the usage limit).
+    XCTAssertTrue(view.contains("Text(notchHintText)"))
+    XCTAssertTrue(
+      view.contains("state.pttHintText.isEmpty ? state.transientHintText : state.pttHintText"))
     let state = try source(relativePath: "Sources/FloatingControlBar/FloatingControlBarState.swift")
     XCTAssertTrue(state.contains("var pttHintText: String"))
   }

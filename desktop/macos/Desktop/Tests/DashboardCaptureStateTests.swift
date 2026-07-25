@@ -324,8 +324,13 @@ final class DashboardCaptureStateTests: XCTestCase {
     XCTAssertTrue(dashboard.contains(".accessibilityHidden(isHomeModalPresented)"))
     XCTAssertTrue(dashboard.contains(".accessibilityAddTraits(.isModal)"))
     XCTAssertTrue(apps.contains(".accessibilityHidden(isPresented)"))
-    XCTAssertTrue(apps.contains(".accessibilityHidden(item != nil)"))
     XCTAssertTrue(apps.contains(".accessibilityAddTraits(.isModal)"))
+    // The item-based sheet is hoisted to the shell so one backdrop covers the
+    // whole window, top bar included. That moves the isolation up a layer, so
+    // it must be asserted there — the page no longer owns it.
+    let home = try desktopHomeViewSource()
+    XCTAssertTrue(home.contains(".accessibilityHidden(modalState.isPresenting)"))
+    XCTAssertTrue(home.contains(".accessibilityAddTraits(.isModal)"))
 
     // The close control must be a real, labeled button — not a tap gesture.
     XCTAssertTrue(apps.contains("var accessibilityLabel: String = \"Close\""))
@@ -362,6 +367,16 @@ final class DashboardCaptureStateTests: XCTestCase {
 
   private func appsSource() throws -> String {
     try source(named: "AppsPage.swift")
+  }
+
+  private func desktopHomeViewSource() throws -> String {
+    let testsURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    let sourceURL =
+      testsURL
+      .deletingLastPathComponent()
+      .appendingPathComponent("Sources/MainWindow/DesktopHomeView.swift")
+    // omi-test-quality: source-inspection -- static contract: the hoisted modal's isolation modifiers live in the shell view body, which has no headless seam to assert through.
+    return try String(contentsOf: sourceURL, encoding: .utf8)
   }
 
   private func source(named fileName: String) throws -> String {

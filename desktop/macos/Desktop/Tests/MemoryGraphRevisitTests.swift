@@ -20,7 +20,11 @@ final class MemoryGraphRevisitTests: XCTestCase {
     // Brain Map owns the full content surface and paints with the page's shared
     // background token instead of a distinct gray canvas.
     XCTAssertFalse(home.contains("constrainedListPage(MemoryHubPage"))
-    XCTAssertTrue(home.contains("if segment == 2"))
+    XCTAssertTrue(home.contains("switch segment"))
+    // The Brain Map branch must stay outside constrainedListContent, which is
+    // what gives it the full surface to pan and zoom in.
+    XCTAssertFalse(
+      home.contains("constrainedListContent(\n            MemoryGraphPage"))
     XCTAssertTrue(home.contains("MemoryGraphPage(viewModel: viewModelContainer.memoryGraphViewModel)"))
     XCTAssertTrue(graph.contains("scnView.backgroundColor = NSColor(OmiColors.backgroundPrimary)"))
   }

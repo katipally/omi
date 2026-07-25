@@ -7,9 +7,7 @@ import os
 actor RewindDatabase {
   static let shared = RewindDatabase()
   private static let terminationLock = NSLock()
-  /// Every access goes through `terminationLock`, so the isolation the
-  /// compiler asks for is already enforced by the lock below.
-  nonisolated(unsafe) private static var terminationInProgress = false
+  nonisolated(unsafe) private static var terminationInProgress = false  // guarded by terminationLock
 
   nonisolated static var isTerminationInProgress: Bool {
     terminationLock.withLock { terminationInProgress }

@@ -2580,7 +2580,7 @@ class FloatingControlBarManager {
   }
 
   func openAgentChatFromTimeline(ref: AgentTimelineRef, completion: ((Bool) -> Void)? = nil) {
-    guard let window else {
+    guard window != nil || notchScreenManager != nil else {
       completion?(false)
       return
     }
@@ -2616,6 +2616,18 @@ class FloatingControlBarManager {
         return
       }
       AgentPillsManager.shared.markViewed(pillID: pillID)
+      // The notch drills into the agent on its own panel; the legacy window
+      // has to be resized and ordered front itself.
+      if let notchScreenManager {
+        notchState.setNotchHoverMenuOpen(false)
+        notchScreenManager.openAgent(pillID: pillID)
+        completion?(true)
+        return
+      }
+      guard let window else {
+        completion?(false)
+        return
+      }
       window.state.setNotchHoverMenuOpen(false)
       window.makeKeyAndOrderFront(nil)
       OmiMotion.withGated(.easeOut(duration: 0.10)) {
@@ -2632,6 +2644,11 @@ class FloatingControlBarManager {
   /// of dangling as .agent(id) for a removed pill. (Codex P2 — clear active
   /// chat when dismissing a pill.)
   func leaveActiveAgentSurfaceFromPillDismiss() {
+    if let notchScreenManager, let pillID = notchState.activeAgentChatPillID {
+      notchScreenManager.clearAgentDrillIn(pillID: pillID)
+      notchState.activeAgentChatPillID = nil
+      return
+    }
     guard let window else { return }
     window.leaveAgentConversation()
   }
@@ -2973,6 +2990,29 @@ class FloatingControlBarManager {
   }
 
   func openAskOmiForAutomation(reset: Bool, wait: Bool = true) async -> [String: String] {
+    if let notchScreenManager {
+      if reset, let provider = sharedFloatingProvider,
+        let error = await provider.automationResetMainChatForHarness()
+      {
+        return ["error": error]
+      }
+      let start = ContinuousClock.now
+      notchScreenManager.openPrimary()
+      guard wait else {
+        return [
+          "triggered": "true",
+          "frame": notchScreenManager.primaryPanelFrame.map(NSStringFromRect) ?? "",
+          "focused": notchScreenManager.anyPanelKeyboardFocused ? "true" : "false",
+        ]
+      }
+      let openMs = await waitForAutomationCondition { notchScreenManager.hasOpenPanel }
+      return [
+        "openMs": openMs ?? "timeout",
+        "elapsedMs": start.duration(to: .now).millisecondsString,
+        "frame": notchScreenManager.primaryPanelFrame.map(NSStringFromRect) ?? "",
+        "focused": notchScreenManager.anyPanelKeyboardFocused ? "true" : "false",
+      ]
+    }
     guard let window else {
       return ["error": "floating_bar_window_unavailable"]
     }
@@ -3057,6 +3097,19 @@ class FloatingControlBarManager {
   }
 
   func closeAskOmiForAutomation(wait: Bool = true) async -> [String: String] {
+    if let notchScreenManager {
+      let start = ContinuousClock.now
+      notchScreenManager.closeAll()
+      let closeMs =
+        wait ? await waitForAutomationCondition { !notchScreenManager.hasOpenPanel } : nil
+      return [
+        "closeMs": closeMs ?? (wait ? "timeout" : "skipped"),
+        "elapsedMs": start.duration(to: .now).millisecondsString,
+        "visible": notchScreenManager.visibleWindowCount > 0 ? "true" : "false",
+        "askOmiOpen": notchScreenManager.hasOpenPanel ? "true" : "false",
+        "frame": notchScreenManager.primaryPanelFrame.map(NSStringFromRect) ?? "",
+      ]
+    }
     guard let window else {
       return ["error": "floating_bar_window_unavailable"]
     }
@@ -3286,8 +3339,8 @@ class FloatingControlBarManager {
       action: action,
       screenshotData: screenshotData
     )
-    guard let window else {
-      log("FloatingControlBarManager: dropping notification because window is not set up")
+    guard let state = barState else {
+      log("FloatingControlBarManager: dropping notification because no surface is set up")
       return .windowUnavailable
     }
 
@@ -3305,16 +3358,16 @@ class FloatingControlBarManager {
       break
     }
 
-    if !window.state.showingAIConversation {
+    if !state.showingAIConversation {
       persistNotificationMessageIfNeeded(notification)
     }
 
-    if window.state.currentNotification != nil || window.state.showingAIConversation {
+    if state.currentNotification != nil || state.showingAIConversation {
       pendingNotifications.append(notification)
       return .queued
     }
 
-    presentNotification(notification, in: window)
+    presentNotification(notification)
     return .presented
   }
 
@@ -3325,7 +3378,7 @@ class FloatingControlBarManager {
   }
 
   func flushQueuedNotificationsIfPossible() {
-    guard let window, window.state.currentNotification == nil, !window.state.showingAIConversation
+    guard let state = barState, state.currentNotification == nil, !state.showingAIConversation
     else { return }
     while !pendingNotifications.isEmpty {
       let nextNotification = pendingNotifications.removeFirst()
@@ -3333,7 +3386,7 @@ class FloatingControlBarManager {
         log("FloatingControlBarManager: dropping queued notification from stale runtime owner")
         continue
       }
-      presentNotification(nextNotification, in: window)
+      presentNotification(nextNotification)
       return
     }
   }
@@ -3431,6 +3484,12 @@ class FloatingControlBarManager {
 
   /// Toggle visibility.
   func toggle() {
+    if notchScreenManager != nil {
+      let visible = isVisible
+      AnalyticsManager.shared.floatingBarToggled(visible: !visible, source: "shortcut")
+      if visible { hide() } else { show() }
+      return
+    }
     guard let window = window else { return }
     if window.isVisible {
       AnalyticsManager.shared.floatingBarToggled(visible: false, source: "shortcut")
@@ -3445,6 +3504,14 @@ class FloatingControlBarManager {
   /// conversation still works, but opening now routes to the main app —
   /// the floating bar no longer offers typing.
   func toggleAIInput() {
+    if let notchScreenManager {
+      if notchScreenManager.hasOpenPanel {
+        notchScreenManager.closeAll()
+      } else {
+        AppDelegate.summonWindowTarget()?.openMainAppWindow()
+      }
+      return
+    }
     guard let window = window else {
       AppDelegate.summonWindowTarget()?.openMainAppWindow()
       return
@@ -3459,6 +3526,11 @@ class FloatingControlBarManager {
   /// Open the floating conversation surface. Harness/automation-only entry:
   /// every user-facing typed-input path now opens the main app instead.
   func openAIInput() {
+    if let notchScreenManager {
+      AnalyticsManager.shared.floatingBarAskOmiOpened(source: "shortcut")
+      notchScreenManager.openPrimary()
+      return
+    }
     guard let window = window else { return }
 
     // The bar is a non-activating panel, so it can become key for text input
@@ -3911,12 +3983,27 @@ class FloatingControlBarManager {
     _ = openNotificationConversation(notificationID: notification.id, in: window)
   }
 
-  private func presentNotification(_ notification: FloatingBarNotification, in window: FloatingControlBarWindow) {
+  private func presentNotification(_ notification: FloatingBarNotification) {
     guard notification.ownerID == RuntimeOwnerIdentity.currentOwnerId() else {
       log("FloatingControlBarManager: refusing to present stale-owner notification")
       return
     }
     persistNotificationMessageIfNeeded(notification)
+
+    // The notch renders notifications through the presentation ladder: setting
+    // the state is the presentation. Panels are surfaced if the notch is
+    // hidden, mirroring the legacy temp-show so a disabled bar still delivers.
+    if let notchScreenManager {
+      if notchScreenManager.visibleWindowCount == 0 || !isEnabled {
+        notificationWasTemporarilyShown = true
+        notchScreenManager.showAll()
+      }
+      notchState.currentNotification = notification
+      announceNotificationPresented(notification)
+      armNotificationDismiss()
+      return
+    }
+    guard let window else { return }
 
     // The flag must survive the whole notification chain: when a queued
     // notification is presented the window is already visible from the
@@ -3934,13 +4021,21 @@ class FloatingControlBarManager {
     }
 
     window.showNotification(notification)
+    announceNotificationPresented(notification)
+    armNotificationDismiss()
+  }
+
+  private func announceNotificationPresented(_ notification: FloatingBarNotification) {
     AnalyticsManager.shared.notificationSent(
       notificationId: notification.id.uuidString,
       title: notification.title,
       assistantId: notification.assistantId,
       surface: "floating_bar"
     )
+  }
 
+  /// Auto-dismiss after the read window, advancing any queued notification.
+  private func armNotificationDismiss() {
     let dismissWorkItem = DispatchWorkItem { [weak self] in
       self?.dismissNotificationAndAdvanceQueue(trackDismissal: true)
     }
@@ -3949,10 +4044,14 @@ class FloatingControlBarManager {
   }
 
   private func dismissNotificationAndAdvanceQueue(trackDismissal: Bool) {
-    guard let window else { return }
+    guard let state = barState else { return }
 
-    let dismissedNotification = window.state.currentNotification
-    window.dismissNotification()
+    let dismissedNotification = state.currentNotification
+    if let window {
+      window.dismissNotification()
+    } else {
+      state.currentNotification = nil
+    }
 
     if trackDismissal, let dismissedNotification {
       AnalyticsManager.shared.notificationDismissed(
@@ -3963,20 +4062,22 @@ class FloatingControlBarManager {
       )
     }
 
-    if !window.state.showingAIConversation {
+    if !state.showingAIConversation {
       while !pendingNotifications.isEmpty {
         let nextNotification = pendingNotifications.removeFirst()
         guard nextNotification.ownerID == RuntimeOwnerIdentity.currentOwnerId() else {
           log("FloatingControlBarManager: dropping queued notification from stale runtime owner")
           continue
         }
-        presentNotification(nextNotification, in: window)
+        presentNotification(nextNotification)
         return
       }
     }
 
-    if notificationWasTemporarilyShown && !isEnabled && !window.state.showingAIConversation {
-      window.orderOut(nil)
+    // A notification that surfaced a hidden bar re-hides it once read.
+    if notificationWasTemporarilyShown && !isEnabled && !state.showingAIConversation {
+      notchScreenManager?.hideAll()
+      window?.orderOut(nil)
     }
     notificationWasTemporarilyShown = false
   }

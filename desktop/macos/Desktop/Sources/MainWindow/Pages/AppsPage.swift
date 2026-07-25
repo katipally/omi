@@ -3575,10 +3575,9 @@ struct DismissableSheetItemModifier<Item: Identifiable, SheetContent: View>: Vie
     if let presentedItem = item {
       ModalPresentationState.shared.present(
         token: token,
-        dismiss: { OmiMotion.withGated(.easeOut(duration: 0.2)) { item = nil } }
-      ) {
-        sheetContent(presentedItem)
-      }
+        dismiss: { OmiMotion.withGated(.easeOut(duration: 0.2)) { item = nil } },
+        content: { sheetContent(presentedItem) }
+      )
     } else {
       ModalPresentationState.shared.clear(token: token)
     }

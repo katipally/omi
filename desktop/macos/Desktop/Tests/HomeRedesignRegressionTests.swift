@@ -24,6 +24,17 @@ final class HomeStageCollapseCatcherTests: XCTestCase {
     XCTAssertTrue(HomeStageMode.collapseCatcherActive(mode: .connect, resting: .hub))
     XCTAssertTrue(HomeStageMode.collapseCatcherActive(mode: .connect, resting: .chat))
   }
+
+  func testLandingNeverGetsACatcher() {
+    // The landing is the surface Home opens on, not an overlay: a catcher
+    // there would make a stray click or Esc *open* the transcript.
+    XCTAssertFalse(HomeStageMode.collapseCatcherActive(mode: .landing, resting: .hub))
+    XCTAssertFalse(HomeStageMode.collapseCatcherActive(mode: .landing, resting: .chat))
+  }
+
+  func testLandingReportsItsOwnAutomationLabel() {
+    XCTAssertEqual(HomeStageMode.landing.automationLabel, "landing")
+  }
 }
 
 final class HomeHistoryPresentationPolicyTests: XCTestCase {

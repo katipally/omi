@@ -29,6 +29,11 @@ steps:
     wait:
       state.selectedTabIndex: 0
 
+  - id: S1b
+    name: Home opens on the landing hero
+    wait:
+      state.homeMode: landing
+
   - id: S2
     name: Collapse to the empty-history resting hub
     bridge.action:

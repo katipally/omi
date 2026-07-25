@@ -2784,6 +2784,12 @@ class FloatingControlBarManager {
     }
     log("FloatingControlBarManager: setup() creating notch panels")
 
+    // The notch chat is a second view over the main chat provider, so streamed
+    // deltas, unsynced local IDs and prompt history stay in one canonical
+    // transcript. Every spoken turn dispatches through this provider, so it
+    // must be bound before the first Push-to-Talk press.
+    historyChatProvider = chatProvider
+
     notchState.isRecording = appState.isTranscribing
     recordingCancellable = appState.$isTranscribing
       .receive(on: DispatchQueue.main)
@@ -3474,21 +3480,25 @@ class FloatingControlBarManager {
     fromVoice: Bool = false,
     voiceTurnID: VoiceTurnID? = nil
   ) {
-    guard let window = window else { return }
     guard let provider = activeFloatingProvider() else { return }
 
     if fromVoice {
       guard let voiceTurnID,
         VoiceTurnCoordinator.shared.requireCurrentOwner(for: voiceTurnID) != nil
       else { return }
+      // A spoken turn is surface-agnostic: under the notch there is no legacy
+      // window to prepare, and the panels are already on screen.
+      guard let state = window?.state ?? barState else { return }
       chatCancellable?.cancel()
       chatCancellable = nil
-      window.cancelInputHeightObserver()
-      window.state.currentQueryFromVoice = true
-      if window.state.showingAIConversation {
-        window.closeAIConversation(intent: .voiceHandoff)
-      } else if !window.isVisible {
-        window.makeKeyAndOrderFront(nil)
+      window?.cancelInputHeightObserver()
+      state.currentQueryFromVoice = true
+      if let window {
+        if window.state.showingAIConversation {
+          window.closeAIConversation(intent: .voiceHandoff)
+        } else if !window.isVisible {
+          window.makeKeyAndOrderFront(nil)
+        }
       }
       Task { @MainActor in
         guard VoiceTurnCoordinator.shared.requireCurrentOwner(for: voiceTurnID) != nil else {
@@ -3497,7 +3507,7 @@ class FloatingControlBarManager {
         await self.withQueryTracer(query: query, fromVoice: true) {
           await self.routeQuery(
             query,
-            barWindow: window,
+            barWindow: self.window,
             provider: provider,
             presentation: .voiceOnly,
             voiceTurnID: voiceTurnID
@@ -3506,6 +3516,9 @@ class FloatingControlBarManager {
       }
       return
     }
+
+    // Typed entry below is the legacy pill's conversation panel only.
+    guard let window = window else { return }
 
     // Cancel stale subscriptions immediately to prevent old data from flashing
     chatCancellable?.cancel()
@@ -3575,7 +3588,7 @@ class FloatingControlBarManager {
   /// whether to call `spawn_agent`; Swift never interprets provider wording.
   private func routeQuery(
     _ message: String,
-    barWindow: FloatingControlBarWindow,
+    barWindow: FloatingControlBarWindow?,
     provider: ChatProvider,
     fromVoice: Bool,
     voiceTurnID: VoiceTurnID? = nil
@@ -3591,7 +3604,7 @@ class FloatingControlBarManager {
 
   private func routeQuery(
     _ message: String,
-    barWindow: FloatingControlBarWindow,
+    barWindow: FloatingControlBarWindow?,
     provider: ChatProvider,
     presentation: QueryPresentation,
     voiceTurnID: VoiceTurnID? = nil
@@ -3603,7 +3616,7 @@ class FloatingControlBarManager {
     let turnOwner = chatTurnOwner(for: presentation)
     if provider.isSending {
       guard provider.canInterruptActiveTurn(owner: turnOwner) else {
-        showSharedProviderBusy(in: barWindow, presentation: presentation)
+        if let barWindow { showSharedProviderBusy(in: barWindow, presentation: presentation) }
         return
       }
       pendingFollowUpQuery = PendingFollowUpQuery(
@@ -3611,7 +3624,7 @@ class FloatingControlBarManager {
         presentation: presentation,
         voiceTurnID: voiceTurnID
       )
-      if case .visible(let fromVoice) = presentation {
+      if case .visible(let fromVoice) = presentation, let barWindow {
         prepareVisibleQueryState(message, in: barWindow, fromVoice: fromVoice)
       }
       provider.stopAgent(owner: turnOwner, reason: .superseded)
@@ -3619,7 +3632,7 @@ class FloatingControlBarManager {
     }
 
     // Show the thinking state immediately while the kernel accepts the turn.
-    if case .visible(let fromVoice) = presentation {
+    if case .visible(let fromVoice) = presentation, let barWindow {
       prepareVisibleQueryState(message, in: barWindow, fromVoice: fromVoice)
     }
 
@@ -3636,7 +3649,7 @@ class FloatingControlBarManager {
 
   private func dispatchChatQuery(
     _ message: String,
-    barWindow: FloatingControlBarWindow,
+    barWindow: FloatingControlBarWindow?,
     provider: ChatProvider,
     presentation: QueryPresentation,
     voiceTurnID: VoiceTurnID?
@@ -3647,6 +3660,9 @@ class FloatingControlBarManager {
     else { return }
     switch presentation {
     case .visible:
+      // The visible surface is the legacy pill's conversation window; the
+      // notch never renders it.
+      guard let barWindow else { return }
       await sendAIQuery(
         message,
         barWindow: barWindow,
@@ -3655,9 +3671,12 @@ class FloatingControlBarManager {
       )
     case .voiceOnly:
       guard let voiceTurnID else { return }
+      // A spoken turn only needs the bar state, so it runs identically whether
+      // the notch or the legacy window is the surface.
+      guard let state = barWindow?.state ?? barState else { return }
       await sendVoiceOnlyQuery(
         message,
-        barWindow: barWindow,
+        state: state,
         provider: provider,
         voiceTurnID: voiceTurnID
       )
@@ -3784,12 +3803,12 @@ class FloatingControlBarManager {
   }
 
   private func dispatchPendingQueryIfNeeded(
-    barWindow: FloatingControlBarWindow,
+    barWindow: FloatingControlBarWindow?,
     provider: ChatProvider
   ) async -> Bool {
     guard let pending = pendingFollowUpQuery else { return false }
     pendingFollowUpQuery = nil
-    barWindow.state.currentQueryFromVoice = pending.presentation.fromVoice
+    (barWindow?.state ?? barState)?.currentQueryFromVoice = pending.presentation.fromVoice
     await routeQuery(
       pending.text,
       barWindow: barWindow,
@@ -4582,7 +4601,7 @@ class FloatingControlBarManager {
 
   private func sendVoiceOnlyQuery(
     _ message: String,
-    barWindow: FloatingControlBarWindow,
+    state: FloatingControlBarState,
     provider: ChatProvider,
     voiceTurnID: VoiceTurnID
   ) async {
@@ -4604,7 +4623,7 @@ class FloatingControlBarManager {
       }
     }
 
-    barWindow.state.currentQueryFromVoice = true
+    state.currentQueryFromVoice = true
     if let turnID = VoiceTurnCoordinator.shared.activeTurnID {
       VoiceTurnCoordinator.shared.publish(.clearPresentation(turnID: turnID))
     }
@@ -4680,7 +4699,7 @@ class FloatingControlBarManager {
       voiceCompletionOutcome = journalAccepted == true ? .journalAccepted : .journalFailed
     }
 
-    if await dispatchPendingQueryIfNeeded(barWindow: barWindow, provider: provider) {
+    if await dispatchPendingQueryIfNeeded(barWindow: window, provider: provider) {
       return
     }
 
@@ -4689,8 +4708,8 @@ class FloatingControlBarManager {
       $0.clientTurnId == clientTurnId && $0.sender == .ai
     }) {
       FloatingBarVoicePlaybackService.shared.updateStreamingResponseIfEnabled(finalAIMessage, isFinal: true)
-      if journalAccepted == false {
-        appendJournalSaveWarning(in: barWindow, provider: provider)
+      if journalAccepted == false, let window {
+        appendJournalSaveWarning(in: window, provider: provider)
       }
     } else if let errorText = provider.displayErrorMessage, !errorText.isEmpty {
       FloatingBarVoicePlaybackService.shared.speakOneShot(errorText)

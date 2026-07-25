@@ -2790,6 +2790,9 @@ class FloatingControlBarManager {
     // must be bound before the first Push-to-Talk press.
     historyChatProvider = chatProvider
 
+    // Every panel is the notch; readers of the shared state (automation,
+    // onboarding copy) still ask whether this Mac renders one.
+    notchState.usesNotchIsland = NotchMetrics.screenHasCameraHousing(NSScreen.main)
     notchState.isRecording = appState.isTranscribing
     recordingCancellable = appState.$isTranscribing
       .receive(on: DispatchQueue.main)
@@ -2933,6 +2936,19 @@ class FloatingControlBarManager {
   }
 
   var automationState: AutomationState {
+    // The notch is the surface: report from its panels, not the retired window,
+    // or every reader (automation, e2e, `omi-ctl state`) sees a dead bar.
+    if let notchScreenManager {
+      return AutomationState(
+        isVisible: notchScreenManager.visibleWindowCount > 0,
+        isAskOmiOpen: notchScreenManager.hasOpenPanel,
+        isAskOmiFocused: notchScreenManager.anyPanelKeyboardFocused,
+        frame: notchScreenManager.primaryPanelFrame.map(NSStringFromRect),
+        isVoiceListening: notchState.isVoiceListening,
+        isVoiceResponseActive: notchState.isVoiceResponseGlowActive,
+        usesNotchIsland: NotchMetrics.screenHasCameraHousing(NSScreen.main)
+      )
+    }
     guard let window else {
       return AutomationState(
         isVisible: false,

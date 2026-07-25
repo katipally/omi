@@ -23,6 +23,19 @@ final class NotchVoiceTurnDispatchTests: XCTestCase {
       "Notch setup must bind the chat provider; without it every voice turn is dropped before dispatch")
   }
 
+  func testAutomationStateReportsTheNotchRatherThanTheRetiredWindow() {
+    // Regression: automationState still guarded on the legacy window, so with
+    // the notch running every reader — `omi-ctl state`, the e2e flows, the
+    // bridge actions — saw a bar that was never visible and refused to drive it.
+    let manager = FloatingControlBarManager.shared
+    manager.setup(appState: AppState(), chatProvider: ChatProvider.mainInstance ?? ChatProvider())
+
+    XCTAssertNil(manager.window, "The notch surface does not build the legacy window")
+    XCTAssertNotNil(
+      manager.automationState.frame,
+      "Automation must report the notch panel's frame, not nil from the absent window")
+  }
+
   func testBarStateResolvesToTheNotchStateOnceTheNotchIsRunning() {
     let manager = FloatingControlBarManager.shared
     manager.setup(appState: AppState(), chatProvider: ChatProvider.mainInstance ?? ChatProvider())

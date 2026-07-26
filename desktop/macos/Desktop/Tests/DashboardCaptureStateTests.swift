@@ -287,7 +287,9 @@ final class DashboardCaptureStateTests: XCTestCase {
     XCTAssertTrue(source.contains("onSelectDestination(destination)"))
     XCTAssertTrue(source.contains("selectedExportDestination = destination"))
     XCTAssertTrue(source.contains("if appProvider.apps.isEmpty && !appProvider.isLoading"))
-    XCTAssertTrue(source.contains("ViewThatFits(in: .horizontal)"))
+    // The header's compress-or-stack behavior is asserted against a real layout
+    // pass in `AppsHeaderRowLayoutTests`; scraping for `ViewThatFits` here only
+    // tracked which file the modifier happened to live in.
     XCTAssertTrue(source.contains("private var searchField: some View"))
     XCTAssertTrue(source.contains("private var filterControls: some View"))
     XCTAssertFalse(source.contains("struct AppsCatalogContent: View"))

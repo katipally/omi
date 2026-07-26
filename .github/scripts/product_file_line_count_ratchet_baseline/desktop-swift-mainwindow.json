@@ -1,8 +1,8 @@
 {
   "files": {
-    "desktop/macos/Desktop/Sources/MainWindow/Components/ChatBubble.swift": 1854,
+    "desktop/macos/Desktop/Sources/MainWindow/Components/ChatBubble.swift": 1796,
     "desktop/macos/Desktop/Sources/MainWindow/Pages/AppsPage.swift": 3541,
-    "desktop/macos/Desktop/Sources/MainWindow/Pages/DashboardPage.swift": 4358,
+    "desktop/macos/Desktop/Sources/MainWindow/Pages/DashboardPage.swift": 4267,
     "desktop/macos/Desktop/Sources/MainWindow/Pages/MemoriesPage.swift": 3230,
     "desktop/macos/Desktop/Sources/MainWindow/Pages/TasksPage.swift": 5663,
     "desktop/macos/Desktop/Sources/MainWindow/SidebarView.swift": 1690
@@ -13,7 +13,7 @@
     "desktop/macos/Desktop/Sources/MainWindow/Pages/DashboardPage.swift": "Landing hero and transcript now share one stage slot so they cross-fade in place instead of the hero cutting out, and the landing is seeded from session state so a tab switch (which rebuilds this page) does not replay it.",
     "desktop/macos/Desktop/Sources/MainWindow/Pages/MemoriesPage.swift": "Bridge memory search now awaits the active initial or pagination projection before refreshing, preventing an immediate post-navigation marker search from using stale lifecycle capability state.",
     "desktop/macos/Desktop/Sources/MainWindow/Pages/TasksPage.swift": "Suggested-task loading feedback is now overlaid outside the list flow so an initial fetch cannot shift the task rows; a component split is tracked follow-up.",
-    "desktop/macos/Desktop/Sources/MainWindow/SidebarView.swift": "SB redesign: adds the hover-expand AppNavRail (icons→labels) and the merged/simplified navigation (Memory, Insights) driving selectedIndex; a component split is tracked follow-up."
+    "desktop/macos/Desktop/Sources/MainWindow/SidebarView.swift": "SB redesign: adds the hover-expand AppNavRail (icons\u2192labels) and the merged/simplified navigation (Memory, Insights) driving selectedIndex; a component split is tracked follow-up."
   },
   "threshold": 1500
 }

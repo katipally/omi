@@ -260,7 +260,7 @@ struct NotchView: View {
           .multilineTextAlignment(.center)
           .lineLimit(hintLineLimit)
           .truncationMode(.tail)
-          .padding(.horizontal, OmiSpacing.md)
+          .padding(.horizontal, NotchMetrics.contentSideInset)
           .padding(.top, OmiSpacing.hairline)
           .padding(.bottom, OmiSpacing.sm)
           .frame(maxWidth: .infinity)
@@ -272,6 +272,7 @@ struct NotchView: View {
         chromeReserve
         if let notification = barState.currentNotification, notification.id == id {
           NotchNotificationCard(notification: notification)
+            .padding(.horizontal, NotchMetrics.contentSideInset)
             .measuredIntrinsicHeight(updateNotificationBodyHeight)
         }
       }

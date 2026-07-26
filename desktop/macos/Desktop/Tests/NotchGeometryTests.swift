@@ -95,4 +95,25 @@ final class NotchGeometryTests: XCTestCase {
       NotchMetrics.fallbackClosedHeight
     )
   }
+
+  // MARK: - Content must clear the silhouette
+
+  /// `NotchShape` runs its vertical sides at `minX + topCornerRadius` and
+  /// `maxX - topCornerRadius`; only the topmost band flares to the full width.
+  /// Content inset by less than that radius is clipped by the shape — which is
+  /// what sliced the leading icon off the notification card, leaving a hard
+  /// vertical edge where the triangle's left slope should have been.
+  func testContentInsetClearsTheShapeSides() {
+    XCTAssertGreaterThanOrEqual(
+      NotchMetrics.contentSideInset,
+      NotchMetrics.cornerOpen.top,
+      "content inset below the open corner radius is clipped by the silhouette"
+    )
+  }
+
+  /// The inset costs width, so it must not eat the card alive.
+  func testContentInsetLeavesTheCardUsable() {
+    let usable = NotchMetrics.notificationWidth - NotchMetrics.contentSideInset * 2
+    XCTAssertGreaterThan(usable, NotchMetrics.notificationWidth * 0.8)
+  }
 }

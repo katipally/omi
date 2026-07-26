@@ -57,6 +57,14 @@ enum NotchMetrics {
   /// is a guard against a runaway string, not a routine clamp.
   static let notificationMaxHeight: CGFloat = 220
   static let notificationSpacing: CGFloat = 8
+  /// Horizontal inset every content surface owes the silhouette.
+  ///
+  /// `NotchShape` runs its vertical sides at `minX + topCornerRadius` and
+  /// `maxX - topCornerRadius` — only the topmost band flares out to the full
+  /// width. Content laid out to the panel's full width is therefore clipped by
+  /// that radius on both edges, which is what cut the leading icon off the
+  /// notification card. Anything inside the clip shape starts here.
+  static var contentSideInset: CGFloat { cornerOpen.top }
   /// Slack around the content so the fixed window can hold glow bleed + shadow.
   static let shadowPadding: CGFloat = 22
   /// How far the panel extends *above* the display's top edge. The notch has to

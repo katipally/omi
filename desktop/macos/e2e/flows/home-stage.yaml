@@ -5,7 +5,14 @@ description: Home stage transitions (hub/chat/connect) via automation bridge
 app: non-prod
 covers:
   - desktop/macos/Desktop/Sources/MainWindow/Components/ChatMessagesView.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Components/ChatBubble.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Components/ChatLiveEdgeFollower.swift
+  - desktop/macos/Desktop/Sources/Chat/ChatStreamingReveal.swift
+  - desktop/macos/Desktop/Sources/Chat/ChatOmiMark.swift
+  - desktop/macos/Desktop/Sources/Chat/TypingIndicator.swift
+  - desktop/macos/Desktop/Sources/Chat/AgentLifecycleDisplayProjection.swift
   - desktop/macos/Desktop/Sources/MainWindow/Pages/DashboardPage.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Pages/HomeAskBar.swift
   - desktop/macos/Desktop/Sources/MainWindow/Pages/HomeStagePresentation.swift
   - desktop/macos/Desktop/Sources/MainWindow/Pages/HomeChatRevealMonitor.swift
   - desktop/macos/Desktop/Sources/MainWindow/Pages/HomeStatusControls.swift
@@ -35,9 +42,11 @@ steps:
   # Home opens on the hub, every time. No action here on purpose: the point is
   # that arriving at Dashboard rests on `hub` without anything nudging it, so a
   # background history restore that auto-reveals the transcript fails the flow.
+  # A bare `wait:` is not a typed harness operation, so this step could only
+  # ever error — it never asserted the resting mode it is named for.
   - id: S2
     name: Home opens on the hub
-    wait:
+    state.expect:
       state.homeMode: hub
 
   - id: S3
@@ -57,6 +66,30 @@ steps:
       result.detail.sent: "[[MARKER:home-stage-stub]]"
     wait:
       state.homeMode: chat
+
+  # The ask in S4 is what drives the transcript render path end to end: the row
+  # inserts through ChatBubble, the reply reveals through ChatStreamingReveal,
+  # and the working mark and live-edge follow run alongside it. Asserting the
+  # turn landed is what makes those `covers:` entries mean something.
+  - id: S4a
+    name: Wait for the turn to settle
+    bridge.action:
+      name: wait_main_chat_idle
+      params:
+        timeoutMs: "120000"
+    expect:
+      result.detail.idle: "true"
+
+  - id: S4b
+    name: The sent turn reaches the transcript
+    bridge.action:
+      name: main_chat_snapshot
+    expect:
+      # S0 reset the chat, so a count of two is exactly this turn's user row and
+      # its reply — both rendered through ChatBubble, the reply through the
+      # paced reveal.
+      result.detail.message_count: "2"
+      result.detail.is_streaming: "false"
 
   - id: S5
     name: Toggle connect tray

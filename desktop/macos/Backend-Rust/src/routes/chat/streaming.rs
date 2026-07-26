@@ -16,7 +16,8 @@ use super::request_translation::{compute_cost, response_text_content};
 use super::response_or_500;
 use super::sse::{drain_sse_events, make_chunk, sse_line, stream_termination_chunks};
 use super::transport::{
-    append_pause_turn_continuation, complete_anthropic_server_tool_turn, send_anthropic_with_retry,
+    accumulate_anthropic_usage, append_pause_turn_continuation,
+    complete_anthropic_server_tool_turn, send_anthropic_with_retry,
 };
 
 /// How long a streaming turn may go without a single byte from Anthropic before we end it.
@@ -104,6 +105,89 @@ impl StreamedContentBlocks {
     pub(super) fn into_value(self) -> Value {
         Value::Array(self.blocks.into_iter().flatten().collect())
     }
+}
+
+/// Translate a completed `pause_turn` continuation into the OpenAI chunks the
+/// streaming client is still waiting for.
+///
+/// A continuation answers in text *and* may decide to call a client-side tool:
+/// web search is only ever exposed alongside the client's own tools
+/// (`inject_web_search`), so "search, then act" is the ordinary shape of a
+/// paused turn. Forwarding only the text would hand the client
+/// `finish_reason: tool_calls` with nothing to run.
+pub(super) fn continuation_delta_chunks(
+    resp: &AnthropicResponse,
+    stream_id: &str,
+    created: i64,
+    model: &str,
+    first_tool_ordinal: u32,
+) -> Vec<Value> {
+    let mut chunks = Vec::new();
+
+    if let Some(text) = response_text_content(resp) {
+        chunks.push(make_chunk(
+            stream_id,
+            created,
+            model,
+            ChunkDelta {
+                content: Some(text),
+                ..ChunkDelta::default()
+            },
+            None,
+            None,
+        ));
+    }
+
+    let mut ordinal = first_tool_ordinal;
+    for block in &resp.content {
+        let AnthropicContentBlock::ToolUse { id, name, input } = block else {
+            continue;
+        };
+        chunks.push(make_chunk(
+            stream_id,
+            created,
+            model,
+            ChunkDelta {
+                tool_calls: Some(vec![ChunkToolCall {
+                    index: ordinal,
+                    id: Some(id.clone()),
+                    call_type: Some("function".to_string()),
+                    function: Some(ChunkFunctionCall {
+                        name: Some(name.clone()),
+                        arguments: Some(serde_json::to_string(input).unwrap_or_default()),
+                    }),
+                }]),
+                ..ChunkDelta::default()
+            },
+            None,
+            None,
+        ));
+        ordinal += 1;
+    }
+
+    chunks
+}
+
+/// Total the usage of a turn that paused: the streamed leg plus the continuation.
+///
+/// The paused leg is the leg that ran the server tool — it holds the output tokens
+/// generated before the pause *and* the `web_search_requests` Anthropic bills per
+/// request. Reporting only the continuation's usage drops both, so a paused turn is
+/// billed as if its first half never happened. The non-streaming lane already sums
+/// every leg (`accumulate_anthropic_usage`); the streaming splice totals the same way.
+pub(super) fn paused_turn_total_usage(
+    initial: Option<&AnthropicUsage>,
+    streamed_final: Option<&AnthropicUsage>,
+    continuation: &AnthropicUsage,
+) -> AnthropicUsage {
+    // `message_start` carries the input side, `message_delta` the output side, so the
+    // streamed leg is only whole once the two are merged.
+    let mut total = match streamed_final {
+        Some(final_usage) => merge_stream_usage(initial, final_usage),
+        None => initial.cloned().unwrap_or_default(),
+    };
+    accumulate_anthropic_usage(&mut total, continuation);
+    total
 }
 
 fn append_string_field(block: &mut Value, key: &str, suffix: &str) {
@@ -466,20 +550,13 @@ where
             .await
             {
                 Ok(anthropic_resp) => {
-                    if let Some(text) = response_text_content(&anthropic_resp) {
-                        let chunk_val = make_chunk(
-                            &stream_id,
-                            created,
-                            &model,
-                            ChunkDelta {
-                                role: None,
-                                content: Some(text),
-                                reasoning_content: None,
-                                tool_calls: None,
-                            },
-                            None,
-                            None,
-                        );
+                    for chunk_val in continuation_delta_chunks(
+                        &anthropic_resp,
+                        &stream_id,
+                        created,
+                        &model,
+                        next_tool_ordinal,
+                    ) {
                         yield Ok(sse_line(&chunk_val));
                     }
                     let finish = map_stop_reason(anthropic_resp.stop_reason.as_deref());
@@ -493,7 +570,11 @@ where
                     );
                     yield Ok(sse_line(&chunk_val));
 
-                    let merged = merge_stream_usage(initial_usage.as_ref(), &anthropic_resp.usage);
+                    let merged = paused_turn_total_usage(
+                        initial_usage.as_ref(),
+                        final_usage.as_ref(),
+                        &anthropic_resp.usage,
+                    );
                     let openai_usage = anthropic_usage_to_openai(&merged);
                     let usage_chunk = ChatCompletionChunk {
                         id: stream_id.clone(),

@@ -25,11 +25,14 @@ struct DesktopTopBar: View {
   /// back-navigation target (previous tab) stays correct.
   var onToggleSettings: () -> Void = {}
 
-  @AppStorage(MemoryHubDestination.storageKey) private var memoryDestinationRawValue =
-    MemoryHubDestination.memories.rawValue
-
+  /// Drives the identity mark. Optional because the view exporter renders this
+  /// bar from stub stores and has no live chat to observe.
+  var chatProvider: ChatProvider? = nil
   /// Drives the sliding selection inside the segmented nav track.
   @Namespace private var navSegmentNamespace
+  /// The segment under the pointer, so the nav track gets the same hover wash
+  /// as every other segmented surface.
+  @State private var hoveredIndex: Int?
 
   private static let logoImage: NSImage? = {
     guard let url = Bundle.resourceBundle.url(forResource: "herologo", withExtension: "png") else {
@@ -94,9 +97,13 @@ struct DesktopTopBar: View {
   }
 
   /// The app identity in the hidden-titlebar band: mark + wordmark, centered.
+  /// The mark is the live one, so the window title moves with the same motion
+  /// the transcript's mark is making rather than sitting frozen beside it.
   private var omiIdentity: some View {
     HStack(spacing: OmiSpacing.xs) {
-      if let logo = Self.logoImage {
+      if let chatProvider {
+        OmiIdentityMark(chatProvider: chatProvider)
+      } else if let logo = Self.logoImage {
         Image(nsImage: logo)
           .resizable()
           .scaledToFit()
@@ -117,63 +124,44 @@ struct DesktopTopBar: View {
   }
 
   /// One track holding the four primary tabs, so the selected fill slides
-  /// between them instead of blinking on and off separate pills. Memory keeps
-  /// its destination menu — it is a segment that also discloses.
+  /// between them instead of blinking on and off separate pills. Memory has no
+  /// destination menu: the hub's own segmented control below is the single
+  /// switcher, so this stays four plain, one-click segments.
   private var navSegments: some View {
     HStack(spacing: OmiSpacing.hairline) {
       ForEach(navItems) { item in
-        if item.index == SidebarNavItem.conversations.rawValue {
-          Menu {
-            ForEach(MemoryHubDestination.allCases) { destination in
-              Button {
-                memoryDestinationRawValue = destination.rawValue
-                OmiMotion.withGated(OmiSegmentedMetrics.selectionAnimation) {
-                  selectedIndex = SidebarNavItem.conversations.rawValue
-                }
-              } label: {
-                Label(destination.title, systemImage: destination.icon)
-              }
-            }
-          } label: {
-            navLabel(for: item, showsDisclosure: true)
+        Button {
+          OmiMotion.withGated(OmiSegmentedMetrics.selectionAnimation) {
+            selectedIndex = item.index
           }
-          .menuStyle(.borderlessButton)
-          .fixedSize()
-          .help("Choose a Memory view")
-        } else {
-          Button {
-            OmiMotion.withGated(OmiSegmentedMetrics.selectionAnimation) {
-              selectedIndex = item.index
-            }
-          } label: {
-            navLabel(for: item)
+        } label: {
+          navLabel(for: item)
+        }
+        .buttonStyle(.plain)
+        .help(item.title)
+        .onHover { hovering in
+          OmiMotion.withGated(OmiSegmentedMetrics.hoverAnimation) {
+            hoveredIndex = hovering ? item.index : (hoveredIndex == item.index ? nil : hoveredIndex)
           }
-          .buttonStyle(.plain)
-          .help(item.title)
         }
       }
     }
     .omiSegmentedTrack()
   }
 
-  private func navLabel(for item: NavItem, showsDisclosure: Bool = false) -> some View {
+  private func navLabel(for item: NavItem) -> some View {
     HStack(spacing: OmiSpacing.xs) {
       Image(systemName: item.icon)
         .scaledFont(size: OmiType.caption, weight: .semibold)
       Text(item.title)
         .scaledFont(size: OmiType.caption, weight: .semibold)
-      if showsDisclosure {
-        Image(systemName: "chevron.down")
-          .scaledFont(size: 8, weight: .bold)
-          .foregroundStyle(OmiColors.textQuaternary)
-      }
       // New-item badge lives on the segment it belongs to (Memory =
       // memories + conversations, Tasks = tasks) since Omi was last front.
       if newCount(for: item) > 0 {
         Text("+\(newCount(for: item))")
           .scaledFont(size: OmiType.micro, weight: .bold)
           .foregroundColor(OmiColors.textPrimary)
-          .padding(.horizontal, 5)
+          .padding(.horizontal, OmiSpacing.xxs)
           .padding(.vertical, 1)
           .background(Capsule(style: .continuous).fill(OmiColors.textPrimary.opacity(0.18)))
       }
@@ -182,6 +170,7 @@ struct DesktopTopBar: View {
     .omiSegmentContent()
     .omiSegmentFill(
       isSelected: selectedIndex == item.index,
+      isHovering: hoveredIndex == item.index,
       namespace: navSegmentNamespace,
       geometryID: "navSegment"
     )
@@ -196,6 +185,25 @@ struct DesktopTopBar: View {
     case SidebarNavItem.tasks.rawValue: return newTasks
     default: return 0
     }
+  }
+}
+
+/// The window identity's mark, driven by the same chat state the transcript's
+/// mark reads, so the two are one object moving together.
+///
+/// It owns the observation rather than the bar doing so: a streaming reply
+/// republishes on every token batch, and the nav, badges, and capture controls
+/// have no reason to re-render for that.
+private struct OmiIdentityMark: View {
+  @ObservedObject var chatProvider: ChatProvider
+
+  var body: some View {
+    ChatOmiMark(
+      motion: chatProvider.isSending
+        ? ChatWorkingStatus.motion(for: chatProvider.messages.last) : nil,
+      size: 18,
+      anchor: .centered
+    )
   }
 }
 

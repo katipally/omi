@@ -18,11 +18,17 @@ final class FittedModalGeometryTests: XCTestCase {
     XCTAssertFalse(FittedModalGeometry.isCapped(contentHeight: 650, maxHeight: 650))
   }
 
-  /// Regression: pinning the unmeasured frame to `maxHeight` leaves a modal
-  /// whose measurement never lands stuck at full height, with dead space above
-  /// and below its content. Unmeasured must mean "size naturally", not "size
-  /// tallest".
-  func testUnmeasuredContentIsUnconstrainedRatherThanPinnedToTheCap() {
-    XCTAssertNil(FittedModalGeometry.height(contentHeight: 0, maxHeight: 650))
+  /// Regression: unmeasured content must collapse the frame, not leave it
+  /// unconstrained. These sheets contain a greedy `ScrollView`; given an
+  /// unconstrained pass it reports the whole proposal back as its content
+  /// height and the modal pins to the cap with its content stranded in dead
+  /// space. Zero is what makes the first real measurement the content's own.
+  func testUnmeasuredContentCollapsesRatherThanTakingTheProposal() {
+    XCTAssertEqual(FittedModalGeometry.height(contentHeight: 0, maxHeight: 650), 0)
+    XCTAssertFalse(FittedModalGeometry.isCapped(contentHeight: 0, maxHeight: 650))
+  }
+
+  func testNegativeMeasurementCannotProduceANegativeHeight() {
+    XCTAssertEqual(FittedModalGeometry.height(contentHeight: -40, maxHeight: 650), 0)
   }
 }

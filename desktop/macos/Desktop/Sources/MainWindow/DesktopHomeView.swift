@@ -1092,7 +1092,8 @@ struct DesktopHomeView: View {
                   selectedIndex = SidebarNavItem.rewind.rawValue
                 }
               },
-              onToggleSettings: { toggleSettings() }
+              onToggleSettings: { toggleSettings() },
+              chatProvider: viewModelContainer.chatProvider
             )
             .zIndex(1)
           }
@@ -1153,7 +1154,7 @@ struct DesktopHomeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
-    .animation(.easeOut(duration: 0.22), value: modalState.isPresenting)
+    .omiAnimation(.easeOut(duration: 0.22), value: modalState.isPresenting)
     .overlay {
       // Goal completion celebration overlay
       GoalCelebrationView()

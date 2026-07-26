@@ -162,7 +162,7 @@ struct AppsPage: View {
     VStack(spacing: 0) {
       // Search bar
       searchBar
-        .padding()
+        .padding(OmiSpacing.lg)
 
       Divider()
         .background(OmiColors.backgroundTertiary)
@@ -492,13 +492,14 @@ struct AppsPage: View {
     activeAutomationCommand = nil
   }
 
+  /// Equally spaced header controls: the search field's layout priority absorbs
+  /// the slack, where a flexible `Spacer` would strand "Create App" at the edge.
   private var searchBar: some View {
     ViewThatFits(in: .horizontal) {
       HStack(spacing: OmiSpacing.sm) {
         searchField
           .layoutPriority(1)
         filterControls
-        Spacer(minLength: 8)
         createAppButton
         dismissControl
       }
@@ -511,7 +512,6 @@ struct AppsPage: View {
 
         HStack(spacing: OmiSpacing.sm) {
           filterControls
-          Spacer(minLength: 8)
           createAppButton
         }
       }

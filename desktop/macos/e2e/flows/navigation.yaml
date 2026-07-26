@@ -24,7 +24,7 @@ preconditions:
 steps:
   - id: S1
     name: Verify Home tab loads
-    do: "Verify the app is on the Home tab. The header has two rows: the Omi mark and wordmark centered on top with a Settings chip on the left (clear of the traffic lights) and Capture / Listening on the right, and a segmented control below with 4 segments: Home, Memory, Tasks, Apps. Home content should show the landing hero (rotating Omi mark, 'Ask omi anything') with the composer beneath it."
+    do: "Verify the app is on the Home tab. The header has two rows: the Omi mark and wordmark centered on top with a Settings chip on the left (clear of the traffic lights) and Capture / Listening on the right, and a segmented control below with 4 segments: Home, Memory, Tasks, Apps. Home content should show the hub (rotating Omi mark, a greeting headline, a short daily brief, and a few suggestion rows) with the composer docked beneath it."
     expect:
       interactive_count: { min: 8 }
       text_visible:

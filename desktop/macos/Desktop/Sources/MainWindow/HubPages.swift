@@ -24,26 +24,24 @@ struct MemoryHubPage: View {
   let viewModelContainer: ViewModelContainer
   @AppStorage(MemoryHubDestination.storageKey) private var destinationRawValue =
     MemoryHubDestination.memories.rawValue
+  /// The control drives this, not `@AppStorage` directly. An AppStorage write
+  /// round-trips through UserDefaults and republishes on a later runloop turn,
+  /// which lands outside the `withAnimation` transaction — the selected capsule
+  /// jumps instead of sliding. Local state animates; the mirror below persists.
+  @State private var selection = MemoryHubDestination.persisted.rawValue
 
   private var destination: MemoryHubDestination {
-    MemoryHubDestination(rawValue: destinationRawValue) ?? .memories
+    MemoryHubDestination(rawValue: selection) ?? .memories
   }
 
   var body: some View {
-    // The top-bar menu can jump straight here from any tab, but once you are on
-    // Memory nothing in the menu's label says which of the three destinations
-    // you landed on. This control is the visible current-state indicator, and
-    // switching sections without going back up to the menu.
     VStack(spacing: 0) {
       // Its own band, divided from the page below, so it reads as "which
       // section am I in" chrome rather than another control belonging to the
       // page's own header.
       OmiSegmentedControl(
         segments: MemoryHubDestination.allCases.map(\.title),
-        selection: Binding(
-          get: { destination.rawValue },
-          set: { destinationRawValue = $0 }
-        )
+        selection: $selection
       )
       .padding(.vertical, OmiSpacing.md)
       .frame(maxWidth: .infinity)
@@ -69,8 +67,15 @@ struct MemoryHubPage: View {
         }
       }
       .id(destination)
-      .transition(.opacity.animation(.easeInOut(duration: 0.2)))
+      .transition(.opacity.animation(OmiMotion.gated(.easeInOut(duration: 0.2))))
       .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    .onChange(of: selection) { _, new in destinationRawValue = new }
+    // External routing (Cmd+2, automation, the notification handlers in
+    // DesktopHomeView) writes the stored key directly; mirror it back in.
+    .onChange(of: destinationRawValue) { _, new in
+      guard new != selection else { return }
+      OmiMotion.withGated(OmiSegmentedMetrics.selectionAnimation) { selection = new }
     }
   }
 }
@@ -94,7 +99,7 @@ struct FocusHubPage: View {
         }
       }
       .id(segment)
-      .transition(.opacity.animation(.easeInOut(duration: 0.2)))
+      .transition(.opacity.animation(OmiMotion.gated(.easeInOut(duration: 0.2))))
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
   }

@@ -82,15 +82,15 @@ final class HomeStageCloseSemanticsTests: XCTestCase {
       "Both collapseHomeStagePanel and toggleHomeConnectPanel must invalidate deferred focus")
   }
 
-  /// Asking (via the ask bar) opens chat. After history restoration, the
-  /// resting surface follows the shared history-presentation policy.
-  func testHomeRestingModeFollowsLoadedHistoryPolicy() throws {
+  /// Asking (via the ask bar) opens chat, and every panel collapses back to the
+  /// one surface Home rests on.
+  func testHomeRestingModeIsTheSharedPolicySurface() throws {
     let source = try dashboardSource()
 
     let resting = try computedPropertyBody(named: "homeRestingMode", in: source)
-    XCTAssertTrue(resting.contains("HomeHistoryPresentationPolicy.restingMode("))
-    XCTAssertTrue(resting.contains("isLoading: chatProvider.isLoading"))
-    XCTAssertTrue(resting.contains("messageCount: chatProvider.messages.count"))
+    XCTAssertTrue(
+      resting.contains("HomeHistoryPresentationPolicy.restingMode"),
+      "The resting surface must come from the shared policy, not a second local rule")
 
     let ask = try methodBody(named: "sendFromHomeAskBar", in: source)
     XCTAssertTrue(

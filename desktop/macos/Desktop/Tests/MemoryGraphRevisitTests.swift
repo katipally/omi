@@ -28,7 +28,7 @@ final class MemoryGraphRevisitTests: XCTestCase {
     XCTAssertTrue(graph.contains("scnView.backgroundColor = NSColor(OmiColors.backgroundPrimary)"))
   }
 
-  func testMemoryHubDestinationMenuHasStableRoutes() {
+  func testMemoryHubDestinationHasStableRoutes() {
     XCTAssertEqual(
       MemoryHubDestination.allCases,
       [.memories, .conversations, .brainMap]

@@ -12,19 +12,24 @@ package struct OmiFilterChip: View {
   var showsDisclosure: Bool
   /// Tint for the leading glyph only. Defaults to the label colour.
   var iconColor: Color?
+  /// Floor for the capsule's width, for a control whose title changes with the
+  /// selection and shouldn't resize the row each time.
+  var minWidth: CGFloat?
 
   package init(
     icon: String?,
     title: String,
     isActive: Bool = false,
     showsDisclosure: Bool = false,
-    iconColor: Color? = nil
+    iconColor: Color? = nil,
+    minWidth: CGFloat? = nil
   ) {
     self.icon = icon
     self.title = title
     self.isActive = isActive
     self.showsDisclosure = showsDisclosure
     self.iconColor = iconColor
+    self.minWidth = minWidth
   }
 
   package var body: some View {
@@ -44,7 +49,7 @@ package struct OmiFilterChip: View {
       }
     }
     .foregroundColor(isActive ? OmiColors.textPrimary : OmiColors.textSecondary)
-    .omiHeaderControlChrome(isActive: isActive)
+    .omiHeaderControlChrome(isActive: isActive, minWidth: minWidth)
   }
 }
 
@@ -52,9 +57,16 @@ extension View {
   /// Height, padding, and capsule for anything that sits in a page header row
   /// beside the search field. Sharing it is what keeps a row of mixed controls
   /// on one baseline — they had drifted to four different heights.
-  package func omiHeaderControlChrome(isActive: Bool = false) -> some View {
+  ///
+  /// `minWidth` widens the capsule itself. Applying it outside this modifier
+  /// instead pads a content-sized capsule with invisible space, which reads as
+  /// an inconsistent gap to whatever sits next in the row.
+  package func omiHeaderControlChrome(
+    isActive: Bool = false, minWidth: CGFloat? = nil
+  ) -> some View {
     self
       .padding(.horizontal, OmiSpacing.md)
+      .frame(minWidth: minWidth)
       .frame(height: OmiChrome.controlHeight)
       .background(
         Capsule(style: .continuous)

@@ -5,74 +5,72 @@ import XCTest
 /// Regressions from the chat-as-home redesign (#10184) and the floating-bar
 /// typing removal (#10181).
 final class HomeStageCollapseCatcherTests: XCTestCase {
-  func testChatWithHistoryIsRestingSoNoCatcherMounts() {
-    // Chat with history is Home itself: no click-outside / Esc catcher.
-    XCTAssertFalse(HomeStageMode.collapseCatcherActive(mode: .chat, resting: .chat))
-  }
-
-  func testHubNeverGetsACatcherEvenWhenChatIsResting() {
-    // Regression: with history present the hub differs from the resting mode,
-    // which used to mount the catchers over the hub — a stray click or Esc
-    // then *opened* the chat instead of leaving the user on the hub.
-    XCTAssertFalse(HomeStageMode.collapseCatcherActive(mode: .hub, resting: .chat))
+  func testHubNeverGetsACatcher() {
+    // The hub is the base surface, never an overlay. A catcher over it would
+    // invert the gesture: a stray click or Esc would *open* the chat.
     XCTAssertFalse(HomeStageMode.collapseCatcherActive(mode: .hub, resting: .hub))
   }
 
-  func testNonRestingPanelsStillCollapse() {
-    // Empty-history chat and the connect tray remain escapable overlays.
+  func testEverySurfaceOverTheHubCollapsesBackToIt() {
     XCTAssertTrue(HomeStageMode.collapseCatcherActive(mode: .chat, resting: .hub))
     XCTAssertTrue(HomeStageMode.collapseCatcherActive(mode: .connect, resting: .hub))
-    XCTAssertTrue(HomeStageMode.collapseCatcherActive(mode: .connect, resting: .chat))
-  }
-
-  func testLandingNeverGetsACatcherLikeTheHub() {
-    // The landing is a base surface, not an overlay. A catcher over it would
-    // invert the gesture: a stray click or Esc would *open* the chat.
-    XCTAssertFalse(HomeStageMode.collapseCatcherActive(mode: .landing, resting: .chat))
-    XCTAssertFalse(HomeStageMode.collapseCatcherActive(mode: .landing, resting: .hub))
-    XCTAssertFalse(HomeStageMode.collapseCatcherActive(mode: .landing, resting: .landing))
   }
 }
 
-final class HomeStageLandingPresentationTests: XCTestCase {
-  func testLandingReportsItselfToAutomation() {
-    // `omi-ctl state` distinguishes the landing from the hub, so a run can
-    // assert Home actually opened on the landing rather than skipping it.
-    XCTAssertEqual(HomeStageMode.landing.automationLabel, "landing")
+/// Home has exactly one empty state. It used to have three — a landing hero on
+/// first open, the hub after that, and a third hero inside an empty transcript —
+/// which meant "Home with nothing to show" looked like three different products
+/// depending on how you got there.
+final class HomeStageSurfacePolicyTests: XCTestCase {
+  func testHubIsBothWhereHomeOpensAndWhereEverythingCollapsesTo() {
+    // One answer, no session state: nothing can remember a *different* front
+    // door and disagree with the collapse target.
+    XCTAssertEqual(HomeHistoryPresentationPolicy.openingMode, .hub)
+    XCTAssertEqual(HomeHistoryPresentationPolicy.restingMode, .hub)
+  }
+
+  func testHistoryNeverAutoRevealsItself() {
+    // The transcript lives above the hub and is reached deliberately — scroll
+    // or send. An async history load must not yank the surface out from under
+    // someone reading the hub.
+    XCTAssertEqual(HomeHistoryPresentationPolicy.openingMode, .hub)
+  }
+
+  func testEverySurfaceReportsItselfToAutomation() {
     XCTAssertEqual(HomeStageMode.hub.automationLabel, "hub")
     XCTAssertEqual(HomeStageMode.chat.automationLabel, "chat")
     XCTAssertEqual(HomeStageMode.connect.automationLabel, "connect")
   }
 
-  func testLandingCentersItselfInsteadOfTakingTheHubTopBias() {
-    // The landing is vertically centered by its own spacers; inheriting the
-    // hub's top padding would push the hero off-center.
-    XCTAssertEqual(HomeStageMode.landing.topPadding(hub: 8), 0)
+  func testOnlyTheHubTakesTheStageTopBias() {
     XCTAssertEqual(HomeStageMode.hub.topPadding(hub: 8), 8)
     XCTAssertEqual(HomeStageMode.chat.topPadding(hub: 8), 0)
   }
 }
 
-final class HomeHistoryPresentationPolicyTests: XCTestCase {
-  func testInitialHistoryLoadKeepsUsefulHubVisible() {
-    XCTAssertEqual(
-      HomeHistoryPresentationPolicy.restingMode(isLoading: true, messageCount: 0),
-      .hub)
-    XCTAssertEqual(
-      HomeHistoryPresentationPolicy.restingMode(isLoading: true, messageCount: 12),
-      .hub)
+@MainActor
+final class HomeChatRevealMonitorTests: XCTestCase {
+  func testTrackpadJitterDoesNotLeaveTheHub() {
+    XCTAssertFalse(HomeChatRevealMonitor.isDeliberateScroll(deltaY: 0))
+    XCTAssertFalse(HomeChatRevealMonitor.isDeliberateScroll(deltaY: 3))
   }
 
-  func testCompletedHistoryLoadMakesChatTheRestingSurface() {
-    XCTAssertEqual(
-      HomeHistoryPresentationPolicy.restingMode(isLoading: false, messageCount: 12),
-      .chat)
+  func testADeliberateScrollInEitherDirectionReveals() {
+    XCTAssertTrue(HomeChatRevealMonitor.isDeliberateScroll(deltaY: 12))
+    XCTAssertTrue(HomeChatRevealMonitor.isDeliberateScroll(deltaY: -12))
   }
 
-  func testCompletedEmptyLoadKeepsNewUserHubVisible() {
-    XCTAssertEqual(
-      HomeHistoryPresentationPolicy.restingMode(isLoading: false, messageCount: 0),
-      .hub)
+  func testStartAndStopAreIdempotent() {
+    // Two owners call stop (the hub's onDisappear and the page's), and an
+    // app-global event monitor that outlives the hub fires on every scroll
+    // anywhere in the app.
+    let monitor = HomeChatRevealMonitor()
+    monitor.start(shouldReveal: { false }, onReveal: {})
+    monitor.start(shouldReveal: { false }, onReveal: {})
+    XCTAssertTrue(monitor.isRunning)
+    monitor.stop()
+    monitor.stop()
+    XCTAssertFalse(monitor.isRunning)
   }
 }
 

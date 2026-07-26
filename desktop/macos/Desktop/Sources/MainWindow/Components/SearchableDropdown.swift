@@ -126,9 +126,9 @@ struct SearchableDropdown: View {
       // Callers use an empty id as their "no filter" sentinel (Apps' All
       // Categories), so emptiness — not nil — is what means inactive.
       isActive: !(selectedId ?? "").isEmpty,
-      showsDisclosure: true
+      showsDisclosure: true,
+      minWidth: minWidth
     )
-    .frame(minWidth: minWidth)
   }
 
   private static func textWidth(_ text: String, font: NSFont) -> CGFloat {

@@ -251,16 +251,16 @@ struct DashboardPage: View {
   @AppStorage("systemAudioCaptureMode") private var systemAudioCaptureModeRaw =
     AssistantSettings.SystemAudioCaptureMode.onlyDuringMeetings.rawValue
   @AppStorage("useLegacyHomeDesign") private var useLegacyHomeDesign = false
-  @State private var homeMode: HomeStageMode = .landing
+  @State private var homeMode: HomeStageMode = HomeHistoryPresentationPolicy.openingMode
   @FocusState private var homeAskFieldFocused: Bool
 
-  /// Landing hero state. `homeLandingReveal` drives the staggered entrance and
-  /// `homeLandingLogoAngle` is the subtle ambient rotation. `landingScrollMonitor`
-  /// is a scroll-wheel monitor installed only while the landing shows, so any
-  /// deliberate scroll reveals the conversation.
-  @State private var homeLandingReveal = false
-  @State private var homeLandingLogoAngle: Double = 0
-  @StateObject private var landingScrollMonitor = LandingScrollRevealMonitor()
+  /// Hub entrance state. `homeHubReveal` drives the staggered entrance and
+  /// `homeHubLogoAngle` is the subtle ambient rotation. `chatRevealMonitor` is a
+  /// scroll-wheel monitor installed only while the hub shows, so any deliberate
+  /// scroll reveals the conversation above it.
+  @State private var homeHubReveal = false
+  @State private var homeHubLogoAngle: Double = 0
+  @StateObject private var chatRevealMonitor = HomeChatRevealMonitor()
 
   /// Rotation index for the home knows-list; a timer advances it so the hub
   /// cycles through fresh suggestions while you're looking at it.
@@ -293,11 +293,8 @@ struct DashboardPage: View {
   private static let homeStageMaxSideInset: CGFloat = 96
   private static let homeAskBarMinWidth: CGFloat = 560
   private static let homeAskBarMaxWidth: CGFloat = 980
-  /// The landing composer is tighter and centered; it widens to the chat
-  /// column width as it drops to the bottom on send.
-  private static let homeLandingAskBarWidth: CGFloat = 640
   private static let homeStagePanelMaxWidth: CGFloat = 1280
-  private static let homeChatColumnMaxWidth: CGFloat = 900
+  private static let homeChatColumnMaxWidth: CGFloat = 680
   private static let homeStageTopPadding: CGFloat = 8
   private static let homeStageBottomPadding: CGFloat = 26
   private static let homeStageAnimation = Animation.spring(response: 0.46, dampingFraction: 0.86)
@@ -490,8 +487,7 @@ struct DashboardPage: View {
           NotificationCenter.default.post(name: .showTryAskingPopup, object: nil)
         }
         syncCaptureState()
-        autoOpenChatForExistingHistoryIfNeeded()
-        startHomeLandingEntrance()
+        startHomeHubEntrance()
         // Post-onboarding, the resting hub is shown by default — open the chat
         // surface so the personalized opener (set on onboarding completion) is
         // actually visible instead of hidden behind the hub.
@@ -513,9 +509,9 @@ struct DashboardPage: View {
       }
       .onDisappear {
         intelligenceStore.setRecommendationActionHandler(nil)
-        // Belt-and-braces with the hero's own onDisappear: an app-global event
+        // Belt-and-braces with the hub's own onDisappear: an app-global event
         // monitor that outlives the page would fire on every scroll anywhere.
-        landingScrollMonitor.stop()
+        chatRevealMonitor.stop()
       }
       .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
         viewModel.refreshGoals()
@@ -556,26 +552,9 @@ struct DashboardPage: View {
       .onReceive(NotificationCenter.default.publisher(for: .openMainChatRequested)) { _ in
         consumePendingMainChatOpenRequest()
       }
-      // Chat history is the home surface: as soon as the (async) history
-      // load shows prior messages, land on the chat panel, not the greeting.
-      .onChange(of: chatProvider.messages.count) { _, _ in
-        autoOpenChatForExistingHistoryIfNeeded()
-      }
-      // The journal projection is installed before the initial-load flag is
-      // cleared. Observe the flag as well so Home reveals the atomic snapshot
-      // only after restoration is complete.
-      .onChange(of: chatProvider.isLoading) { _, _ in
-        autoOpenChatForExistingHistoryIfNeeded()
-      }
-      // Clicking into the ask bar reveals the inline chat; the same is true
-      // when focus lands there via keyboard (Tab / Full Keyboard Access).
-      // The landing keeps its centered composer on focus — only sending
-      // transitions to chat — so it is excluded here.
-      .onChange(of: homeAskFieldFocused) { _, focused in
-        if focused && !useLegacyHomeDesign && homeMode != .chat && homeMode != .landing {
-          openHomeChat()
-        }
-      }
+      // The hub keeps its composer on focus. Reaching the transcript is a
+      // deliberate act — scroll up, or send — so merely clicking into the bar
+      // to type does not leave the hub.
       // Automation-bridge entry points (home_open_chat / home_connect_toggle /
       // home_close_panel / home_ask) — they call the exact functions the
       // on-screen controls call.
@@ -793,6 +772,7 @@ struct DashboardPage: View {
       homeKnowsList(width: columnWidth)
         .padding(.top, OmiSpacing.xxl)
         .transition(.homeSuggestionsFade)
+        .homeHubReveal(homeHubReveal, delay: 0.18)
 
       Spacer(minLength: 0)
 
@@ -821,89 +801,51 @@ struct DashboardPage: View {
   }
 
   /// Panel layout (chat / connect): the surface fills the height with the ask
-  /// bar anchored directly beneath it.
+  /// bar anchored beneath it. `homeAskBar` is one persistent instance across
+  /// every mode, so hub→chat animates its frame (draft and focus preserved)
+  /// instead of cross-fading two composers.
   private func homePanelStage(stageWidth: CGFloat, askBarWidth: CGFloat) -> some View {
-    // `homeAskBar` is one persistent instance across both branches, so
-    // switching landing→chat animates its frame from center to bottom (draft
-    // text and focus are preserved) instead of cross-fading two composers.
     VStack(spacing: 0) {
-      if homeMode == .landing {
-        Spacer(minLength: 0)
-        homeLandingHero
-          .frame(width: askBarWidth)
-          .padding(.bottom, OmiSpacing.xl)
-      } else {
-        ZStack {
-          switch homeMode {
-          case .chat:
-            homeChatPanel(width: askBarWidth)
-              .transition(.homeChatRise)
-          case .connect:
-            homeConnectPanel(stageWidth: stageWidth)
-              .transition(.homeDropFromTop)
-          case .hub, .landing:
-            EmptyView()
-          }
+      ZStack(alignment: .bottom) {
+        switch homeMode {
+        case .chat:
+          homeChatPanel(width: askBarWidth)
+            .transition(.homeChatRise)
+        case .connect:
+          homeConnectPanel(stageWidth: stageWidth)
+            .transition(.homeDropFromTop)
+        case .hub:
+          EmptyView()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+      .frame(maxWidth: .infinity)
+      .frame(maxHeight: .infinity)
 
-        // Rolling suggestions sit just above the ask bar while the chat is empty —
-        // but not for a just-onboarded user, whose empty chat shows the personalized
-        // onboarding opener (with its own starter questions) instead.
-        if chatProvider.messages.isEmpty && chatProvider.onboardingOpener == nil {
-          homeRollingSuggestions
-            .frame(width: askBarWidth)
-            .padding(.bottom, OmiSpacing.sm)
-        }
+      // Above the ask bar while the chat is empty — but not for a just-onboarded
+      // user, whose empty chat shows the personalized opener's own starters.
+      if chatProvider.messages.isEmpty, chatProvider.onboardingOpener == nil {
+        homeRollingSuggestions
+          .frame(width: askBarWidth)
+          .padding(.bottom, OmiSpacing.sm)
       }
 
       homeAskBar
         .frame(width: askBarWidth)
-        .padding(.top, homeMode == .landing ? 0 : OmiSpacing.xl)
+        .padding(.top, OmiSpacing.xl)
 
-      if homeMode == .landing {
-        homeLandingChips
-          .frame(width: askBarWidth)
-          .padding(.top, OmiSpacing.lg)
-        Spacer(minLength: 0)
-      } else {
-        dashboardChatErrorCard
-          .frame(width: askBarWidth)
-          .padding(.top, OmiSpacing.sm)
-      }
+      dashboardChatErrorCard
+        .frame(width: askBarWidth)
+        .padding(.top, OmiSpacing.sm)
     }
   }
 
-  // MARK: - Landing hero (on-open empty state)
-
-  /// The hero, its chips, and the scroll monitor live in `HomeLanding.swift`;
-  /// this page only owns their lifecycle.
-  private var homeLandingHero: some View {
-    HomeLandingHero(reveal: homeLandingReveal, logoAngle: homeLandingLogoAngle)
-      .onAppear {
-        landingScrollMonitor.start(
-          shouldReveal: { homeMode == .landing && !isHomeModalPresented },
-          onReveal: { openHomeChat(focusInput: false) }
-        )
-      }
-      .onDisappear { landingScrollMonitor.stop() }
-  }
-
-  private var homeLandingChips: some View {
-    HomeLandingChips(
-      reveal: homeLandingReveal,
-      prompts: Array(homeSuggestedQuestions.prefix(3)),
-      onSelect: { askHomeSuggestion($0) }
-    )
-  }
-
-  /// Kicks off the landing hero's staggered entrance and its subtle ambient
-  /// rotation. Both gate off cleanly under Reduce Motion.
-  private func startHomeLandingEntrance() {
-    homeLandingReveal = true
+  /// Kicks off the hub's staggered entrance and its subtle ambient rotation.
+  /// Both gate off cleanly under Reduce Motion.
+  private func startHomeHubEntrance() {
+    homeHubReveal = true
     guard !OmiMotion.reduceMotion else { return }
     withAnimation(.linear(duration: 18).repeatForever(autoreverses: false)) {
-      homeLandingLogoAngle = 360
+      homeHubLogoAngle = 360
     }
   }
 
@@ -958,23 +900,39 @@ struct DashboardPage: View {
 
   // MARK: Hub centerpiece
 
+  /// Home's one empty state. The mark turns slowly at rest so omi reads as
+  /// present rather than idle, and the cluster settles in sequence on open.
+  ///
+  /// A deliberate scroll here reveals the conversation living above it, which
+  /// is the only way past the hub other than sending.
   private var homeHubHeadline: some View {
     VStack(spacing: OmiSpacing.sm) {
       SBLogo(size: 40, spinning: chatProvider.isSending)
+        .rotationEffect(.degrees(chatProvider.isSending ? 0 : homeHubLogoAngle))
         .padding(.bottom, OmiSpacing.lg)
+        .homeHubReveal(homeHubReveal, delay: 0)
 
       Text(homeHubGreeting)
         .scaledFont(size: OmiType.hero, weight: .bold)
         .foregroundStyle(HomePalette.ink)
         .multilineTextAlignment(.center)
+        .homeHubReveal(homeHubReveal, delay: 0.06)
 
       Text(homeDailyBrief)
         .scaledFont(size: OmiType.subheading)
         .foregroundStyle(HomePalette.muted)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
+        .homeHubReveal(homeHubReveal, delay: 0.12)
     }
     .frame(maxWidth: .infinity, alignment: .center)
+    .onAppear {
+      chatRevealMonitor.start(
+        shouldReveal: { homeMode == .hub && !isHomeModalPresented && !chatProvider.messages.isEmpty },
+        onReveal: { openHomeChat(focusInput: false) }
+      )
+    }
+    .onDisappear { chatRevealMonitor.stop() }
   }
 
   private var homeHubGreeting: String {
@@ -1334,11 +1292,6 @@ struct DashboardPage: View {
 
   private func homeAskBarWidth(for stageWidth: CGFloat) -> CGFloat {
     let contentWidth = homeStageContentWidth(for: stageWidth)
-    if homeMode == .landing {
-      // Landing: a tighter, centered composer that widens back to the chat
-      // column width as it animates down to the bottom on send.
-      return min(Self.homeLandingAskBarWidth, contentWidth)
-    }
     if homeMode != .hub {
       // Chat mode: bar and message column share one readable width, edges
       // aligned (bubbles start/end on the bar's verticals).
@@ -1368,21 +1321,6 @@ struct DashboardPage: View {
       snapshot.homeMode = modeLabel
       snapshot.updatedAt = ISO8601DateFormatter().string(from: Date())
     }
-  }
-
-  /// Keep the useful insights hub visible while the canonical journal restores.
-  /// Once the atomic snapshot is ready, existing history becomes Home without
-  /// exposing the generic transcript loading spinner.
-  private func autoOpenChatForExistingHistoryIfNeeded() {
-    guard
-      HomeHistoryPresentationPolicy.restingMode(
-        isLoading: chatProvider.isLoading,
-        messageCount: chatProvider.messages.count
-      ) == .chat,
-      homeMode == .hub,
-      chatProvider.onboardingOpener == nil
-    else { return }
-    openHomeChat(focusInput: false)
   }
 
   /// Floating-bar "Continue in Omi": land directly on the chat panel instead
@@ -1421,10 +1359,7 @@ struct DashboardPage: View {
   /// Home opens directly in the continuous chat (no greeting hero). Rolling
   /// suggestions sit above the ask bar while the chat is empty.
   private var homeRestingMode: HomeStageMode {
-    HomeHistoryPresentationPolicy.restingMode(
-      isLoading: chatProvider.isLoading,
-      messageCount: chatProvider.messages.count
-    )
+    HomeHistoryPresentationPolicy.restingMode
   }
 
   /// User-facing collapse (click outside, Esc, connect ×) and the automation
@@ -1878,37 +1813,17 @@ struct DashboardPage: View {
   /// Empty-state of the Home chat: the personalized post-onboarding opener when
   /// one is pending (this is where onboarding lands the user), else the default
   /// "Ask omi anything" welcome.
+  /// The transcript's empty slot. The hub owns "Home has nothing to show yet",
+  /// so an empty `.chat` is not a state the reader ever sits in — only the
+  /// instant between pressing send and the row landing. A second hero there
+  /// flashed for a frame and then was replaced, which reads as a glitch.
+  ///
+  /// The onboarding opener stays: it is a real first-run surface with its own
+  /// starters, not a duplicate of the hub.
   @ViewBuilder private var dashboardChatWelcome: some View {
     if let opener = chatProvider.onboardingOpener {
       OnboardingOpenerView(opener: opener, chatProvider: chatProvider)
-    } else {
-      defaultChatWelcome
     }
-  }
-
-  private var defaultChatWelcome: some View {
-    VStack(spacing: OmiSpacing.md) {
-      if let logoURL = Bundle.resourceBundle.url(forResource: "herologo", withExtension: "png"),
-        let logoImage = NSImage(contentsOf: logoURL)
-      {
-        Image(nsImage: logoImage)
-          .resizable()
-          .scaledToFit()
-          .frame(width: 40, height: 40)
-      }
-
-      Text("Ask omi anything")
-        .scaledFont(size: OmiType.subheading, weight: .semibold)
-        .foregroundColor(OmiColors.textPrimary)
-
-      Text("Your personal AI assistant — knows you through your memories and conversations")
-        .scaledFont(size: OmiType.body)
-        .foregroundColor(OmiColors.textSecondary)
-        .multilineTextAlignment(.center)
-        .padding(.horizontal, OmiSpacing.page)
-    }
-    .frame(maxWidth: .infinity)
-    .padding(.vertical, OmiSpacing.section)
   }
 
   /// Handle tapping on a citation card — opens the cited conversation in a sheet.
@@ -2339,6 +2254,11 @@ struct HomeAskBar: View {
 
   private var isFocused: Bool { focus.wrappedValue }
 
+  private var shellStroke: Color {
+    if isDropTargeted { return Color.white.opacity(0.42) }
+    return Color.white.opacity(isFocused ? 0.22 : 0.08)
+  }
+
   var body: some View {
     VStack(spacing: OmiSpacing.sm) {
       if !attachments.isEmpty {
@@ -2393,22 +2313,17 @@ struct HomeAskBar: View {
       .padding(.vertical, 7)
       .frame(minHeight: 44)
     }
+    // Same recipe as OmiSearchField and omiSegmentedTrack: a translucent white
+    // wash under a crisp 1px ring that brightens on focus.
     .background(
       RoundedRectangle(cornerRadius: 22, style: .continuous)
-        .fill(HomePalette.tile.opacity(isHovering || isFocused ? 1 : 0.92))
+        .fill(Color.white.opacity(isFocused ? 0.10 : (isHovering ? 0.08 : 0.06)))
     )
-    .overlay {
-      if isDropTargeted {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
-          .stroke(Color.white.opacity(0.42), lineWidth: 1)
-      } else {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
-          .stroke(HomePalette.stageGlow.opacity(isFocused ? 0.16 : 0.08), lineWidth: 1)
-          .blur(radius: 1.8)
-      }
-    }
-    .shadow(color: HomePalette.stageGlow.opacity(isFocused ? 0.11 : 0.045), radius: isFocused ? 22 : 16, y: 8)
-    .shadow(color: .black.opacity(isFocused ? 0.45 : 0.34), radius: 24, y: 10)
+    .overlay(
+      RoundedRectangle(cornerRadius: 22, style: .continuous)
+        .stroke(shellStroke, lineWidth: 1)
+    )
+    .shadow(color: .black.opacity(0.38), radius: 10, y: 4)
     .contentShape(.rect(cornerRadius: 22))
     .onTapGesture {
       onActivate()

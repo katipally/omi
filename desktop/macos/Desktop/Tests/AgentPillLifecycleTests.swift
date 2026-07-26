@@ -547,9 +547,11 @@ import XCTest
     XCTAssertTrue(windowSource.contains("state.isNotchHoverMenuVisible ? .openMenuRetention : .activationOnly"))
     XCTAssertTrue(source.contains("isChatChromePinned || shouldShowNotchHoverMenu"))
     XCTAssertTrue(source.contains("static let maxAgents = FloatingControlBarWindow.notchAgentListMaxVisibleAgents"))
-    let markSource = try notchOmiMarkSource()
-    XCTAssertTrue(markSource.contains("static let dotDiameterRatio: CGFloat = 0.18"))
-    XCTAssertTrue(markSource.contains("static let ringRadiusRatio: CGFloat = 0.33"))
+    // The mark's proportions are a shared constant rather than a literal in each
+    // drawer, so the orb's resting ring and the static mark cannot drift apart.
+    XCTAssertEqual(NotchMarkGeometry.dotDiameterRatio, 0.18)
+    XCTAssertEqual(NotchMarkGeometry.ringRadiusRatio, 0.33)
+    XCTAssertEqual(NotchMarkGeometry.dotCount, 8)
     XCTAssertTrue(source.contains("NotchAgentOmiIndicatorView(pills: stackedPills)"))
     XCTAssertTrue(source.contains("NotchOmiMark(dotColors: visiblePills.map"))
     XCTAssertTrue(source.contains("NotchAgentMorphField("))
@@ -1890,14 +1892,6 @@ import XCTest
       .deletingLastPathComponent()
       .deletingLastPathComponent()
       .appendingPathComponent("Sources/FloatingControlBar/FloatingControlBarView.swift")
-    return try String(contentsOf: sourceURL, encoding: .utf8)
-  }
-
-  private func notchOmiMarkSource() throws -> String {
-    let sourceURL = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .appendingPathComponent("Sources/FloatingControlBar/Notch/NotchOmiMarkView.swift")
     return try String(contentsOf: sourceURL, encoding: .utf8)
   }
 

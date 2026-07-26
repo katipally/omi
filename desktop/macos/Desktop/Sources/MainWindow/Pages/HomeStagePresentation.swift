@@ -5,18 +5,13 @@ enum HomeStageMode: Equatable {
   case hub
   case chat
   case connect
-  /// The on-open landing: a centered hero (rotating mark + composer) shown
-  /// before the transcript. Same conversation underneath — the first send
-  /// transitions to `.chat` and continues the one shared thread.
-  case landing
 
   /// Whether the user-facing collapse catchers (click-outside + Esc) mount.
-  /// Only a panel that can collapse to a *different* resting surface gets a
-  /// catcher. `hub` and `landing` are base surfaces, never overlays: mounting
-  /// a catcher over them would invert the gesture and make a stray click or
-  /// Esc *open* the chat.
+  /// Only a surface that sits *over* the hub gets one. The hub is the base
+  /// surface and never an overlay: a catcher over it would invert the gesture
+  /// and make a stray click or Esc open the chat.
   static func collapseCatcherActive(mode: HomeStageMode, resting: HomeStageMode) -> Bool {
-    mode != resting && mode != .hub && mode != .landing
+    mode != resting && mode != .hub
   }
 
   func topPadding(hub: CGFloat) -> CGFloat {
@@ -24,8 +19,6 @@ enum HomeStageMode: Equatable {
     case .hub: return hub
     case .chat: return 0
     case .connect: return OmiSpacing.lg
-    // The landing centers itself in the stage, so it wants no top bias.
-    case .landing: return 0
     }
   }
 
@@ -34,15 +27,23 @@ enum HomeStageMode: Equatable {
     case .hub: return "hub"
     case .chat: return "chat"
     case .connect: return "connect"
-    case .landing: return "landing"
     }
   }
 }
 
 enum HomeHistoryPresentationPolicy {
-  static func restingMode(isLoading: Bool, messageCount: Int) -> HomeStageMode {
-    !isLoading && messageCount > 0 ? .chat : .hub
-  }
+  /// The surface Home rests on, and the one every panel collapses back to.
+  ///
+  /// The hub is the front door unconditionally: it is where the day's brief and
+  /// the actionable rows live, and a surface that only some launches show is a
+  /// surface nobody designs for. History is one scroll or one send away, never
+  /// auto-revealed.
+  static let restingMode: HomeStageMode = .hub
+
+  /// The stage Home opens on. Same answer every time — there is no session
+  /// state to remember and therefore no way for two surfaces to disagree about
+  /// which one is the front door.
+  static let openingMode: HomeStageMode = .hub
 }
 
 /// Shared stage motion for Home panels, including the initial history restore
@@ -110,10 +111,10 @@ extension AnyTransition {
 }
 
 extension View {
-  /// Staggered fade + slight upward drift for a landing-hero element. The
-  /// caller varies `delay` per element so they settle in sequence. Gates off
-  /// under Reduce Motion.
-  package func homeLandingReveal(_ shown: Bool, delay: Double) -> some View {
+  /// Staggered fade + slight upward drift for a hub element. The caller varies
+  /// `delay` per element so they settle in sequence. Gates off under Reduce
+  /// Motion.
+  package func homeHubReveal(_ shown: Bool, delay: Double) -> some View {
     self
       .opacity(shown ? 1 : 0)
       .offset(y: shown ? 0 : 10)

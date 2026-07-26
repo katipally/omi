@@ -1,3 +1,5 @@
+import Foundation
+
 /// Destinations available from the Memory navigation menu.
 enum MemoryHubDestination: Int, CaseIterable, Identifiable {
   static let storageKey = "memoryHubDestination"
@@ -7,6 +9,14 @@ enum MemoryHubDestination: Int, CaseIterable, Identifiable {
   case brainMap
 
   var id: Int { rawValue }
+
+  /// The persisted destination, read straight from defaults. Seeding a `@State`
+  /// from `@AppStorage` in `onAppear` instead renders the default section for a
+  /// frame first, so revisiting the tab flashes Memories before landing on the
+  /// section you actually left.
+  static var persisted: MemoryHubDestination {
+    MemoryHubDestination(rawValue: UserDefaults.standard.integer(forKey: storageKey)) ?? .memories
+  }
 
   var title: String {
     switch self {

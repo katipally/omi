@@ -216,6 +216,20 @@ struct UserScrollDetector: NSViewRepresentable {
   }
 }
 
+/// Where the jump-to-latest chip sits above the foot of the transcript.
+///
+/// Surfaces that float a composer over the transcript report its measured
+/// height as `composerCoverHeight`; stacking the chip on that is what keeps it
+/// off the ask bar instead of inside it. Surfaces that dock their composer
+/// below the transcript report `0`, so they keep the bare gap they had.
+enum ChatJumpButtonPlacement {
+  static let gap: CGFloat = OmiSpacing.sm
+
+  nonisolated static func bottomInset(composerCoverHeight: CGFloat) -> CGFloat {
+    max(0, composerCoverHeight) + gap
+  }
+}
+
 /// Explicit scroll intent model for streaming follow behavior.
 enum ChatScrollMode: Equatable {
   case followingBottom

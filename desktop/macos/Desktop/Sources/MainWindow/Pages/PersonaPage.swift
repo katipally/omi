@@ -43,15 +43,22 @@ struct PersonaPage: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      OmiSheetHeader(
-        title: "AI Persona",
-        subtitle: "Create an AI clone of yourself that others can chat with",
-        onClose: dismissSheet,
-        trailing: { reloadButton }
-      )
+      // Sheet header with close button
+      HStack {
+        Spacer()
+        DismissButton(action: dismissSheet)
+      }
+      .padding(.horizontal, OmiSpacing.xl)
+      .padding(.top, OmiSpacing.lg)
 
       ScrollView {
         VStack(spacing: 0) {
+          // Header
+          header
+            .padding(.horizontal, OmiSpacing.section)
+            .padding(.top, OmiSpacing.lg)
+            .padding(.bottom, OmiSpacing.xxl)
+
           // Content
           if isLoading && persona == nil {
             loadingView
@@ -67,7 +74,6 @@ struct PersonaPage: View {
 
           Spacer()
         }
-        .padding(.top, OmiSpacing.xl)
       }
     }
     .background(OmiColors.backgroundSecondary.opacity(0.3))
@@ -90,25 +96,6 @@ struct PersonaPage: View {
 
   // MARK: - Header
 
-  @ViewBuilder
-  private var reloadButton: some View {
-    if persona != nil {
-      Button {
-        Task { await loadPersona() }
-      } label: {
-        Image(systemName: "arrow.clockwise")
-          .scaledFont(size: OmiType.body, weight: .medium)
-          .foregroundColor(OmiColors.textSecondary)
-      }
-      .buttonStyle(.plain)
-      .disabled(isLoading)
-      .accessibilityLabel("Reload persona")
-    }
-  }
-
-  /// Retired: `OmiSheetHeader` carries the title, the subtitle and the reload
-  /// control in the pinned band. Nothing renders this any more; it stays
-  /// in-tree so its removal can be its own reviewable change.
   private var header: some View {
     HStack {
       VStack(alignment: .leading, spacing: OmiSpacing.xxs) {

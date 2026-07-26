@@ -4,7 +4,6 @@
     "desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarView.swift": 2603,
     "desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarWindow.swift": 4721,
     "desktop/macos/Desktop/Sources/FloatingControlBar/PushToTalkManager.swift": 2574,
-    "desktop/macos/Desktop/Sources/FloatingControlBar/RealtimeHubController+SessionDelegate.swift": 1520,
     "desktop/macos/Desktop/Sources/FloatingControlBar/RealtimeHubController.swift": 1536,
     "desktop/macos/Desktop/Sources/FloatingControlBar/RealtimeHubSession.swift": 1639
   },
@@ -13,7 +12,6 @@
     "desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarView.swift": "The Second Brain onboarding, reach-error, and notch-moment UI keeps the hover menu agent-only and routes idle notch taps through main chat.",
     "desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarWindow.swift": "Second Brain continuous-chat routing shares window geometry with agent-only hover sizing and canonical idle-notch chat ownership.",
     "desktop/macos/Desktop/Sources/FloatingControlBar/PushToTalkManager.swift": "DEBUG owner-boundary tests need a capture-free effect-handler install seam; shared ensureAutomationBarConfigured() removes duplicated automation setup while adding that seam (BasedHardware/omi#10499).",
-    "desktop/macos/Desktop/Sources/FloatingControlBar/RealtimeHubController+SessionDelegate.swift": "Pairs each provider close with its bounded active-turn outcome and immediate recovery decision for release-health analysis; the input-window open is now forwarded so a warm-idle background-agent completion is retried beside that close handling; telemetry and delivery only, no lifecycle change (#10425). Also mirrors the streaming assistant reply into FloatingControlBarState so the notch can reveal it as Omi speaks \u2014 the journaled exchange only reaches the shared timeline at turn end, so without it the notch has nothing to render for the whole reply; display-only, cleared when the voice presentation ends (INV-CHAT-1).",
     "desktop/macos/Desktop/Sources/FloatingControlBar/RealtimeHubController.swift": "Adds bounded realtime mint-failure outcome correlation and close-resolution telemetry so release health distinguishes started recovery from exhaustion; telemetry-only, no lifecycle change (#10425).",
     "desktop/macos/Desktop/Sources/FloatingControlBar/RealtimeHubSession.swift": "Strict concurrency annotations (Ticket 14) add Sendable conformances and isolation qualifiers; sendBackgroundAgentContext now confirms the provider send before returning true (exactly-once: no ack before delivery) and the session emits hubDidOpenInputWindow so a warm-idle completion is retried \u2014 both must live beside the file-private send/turn machinery."
   },

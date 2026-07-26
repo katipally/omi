@@ -123,7 +123,7 @@ class DesktopReleaseFlowContractTests(unittest.TestCase):
             "OMI_QUALIFICATION_CLEANUP_CONTEXT",
             "Finalize only this authenticated qualification lease",
             "if: always()",
-            "qualification-lease release",
+            "qualification-lease-command.sh\" release",
             "runner-capacity.json",
             "M1 qualification runner capacity guard refused to start",
             "33554432",

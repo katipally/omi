@@ -1,0 +1,3 @@
+{
+  "change": "Home now carries one composer across the greeting, the chat and the Connect tray instead of mounting a separate one per view, so it keeps your focus and text when the stage changes and Connect no longer disappears after the first message"
+}

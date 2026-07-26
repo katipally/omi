@@ -1,8 +1,8 @@
 {
   "files": {
     "desktop/macos/Desktop/Sources/MainWindow/Components/ChatBubble.swift": 1814,
-    "desktop/macos/Desktop/Sources/MainWindow/Pages/AppsPage.swift": 3446,
-    "desktop/macos/Desktop/Sources/MainWindow/Pages/DashboardPage.swift": 4044,
+    "desktop/macos/Desktop/Sources/MainWindow/Pages/AppsPage.swift": 3312,
+    "desktop/macos/Desktop/Sources/MainWindow/Pages/DashboardPage.swift": 3000,
     "desktop/macos/Desktop/Sources/MainWindow/Pages/MemoriesPage.swift": 3230,
     "desktop/macos/Desktop/Sources/MainWindow/Pages/TasksPage.swift": 5663,
     "desktop/macos/Desktop/Sources/MainWindow/SidebarView.swift": 1690
@@ -10,7 +10,7 @@
   "raise_justifications": {
     "desktop/macos/Desktop/Sources/MainWindow/Components/ChatBubble.swift": "The user pill measures its own row instead of containerRelativeFrame, which resolves against the ScrollView and would have sized the pill against the whole window once the scroll view spanned the shell.",
     "desktop/macos/Desktop/Sources/MainWindow/Pages/AppsPage.swift": "Install failures now reach a banner instead of only a stored property, and every detail-sheet action resolves the app's live enabled state so the remove button cannot re-install; AppCard and AppActionButton relocated to AppInstallControls.swift.",
-    "desktop/macos/Desktop/Sources/MainWindow/Pages/DashboardPage.swift": "The composer floats over the transcript with its height measured and reserved, and the connect tray takes that reserve as padding because it cannot scroll its last rows clear; HomeAskBar relocated to its own file.",
+    "desktop/macos/Desktop/Sources/MainWindow/Pages/DashboardPage.swift": "One merged stage keeps a single composer identity across hub/chat/connect, so the composer's floating reserve and the connect tray's padding stay with the page state that drives them; the stage container moved to HomeStageLayout.swift and the connect-tray components to HomeConnectComponents.swift.",
     "desktop/macos/Desktop/Sources/MainWindow/Pages/MemoriesPage.swift": "Bridge memory search now awaits the active initial or pagination projection before refreshing, preventing an immediate post-navigation marker search from using stale lifecycle capability state.",
     "desktop/macos/Desktop/Sources/MainWindow/Pages/TasksPage.swift": "Suggested-task loading feedback is now overlaid outside the list flow so an initial fetch cannot shift the task rows; a component split is tracked follow-up.",
     "desktop/macos/Desktop/Sources/MainWindow/SidebarView.swift": "SB redesign: adds the hover-expand AppNavRail (icons→labels) and the merged/simplified navigation (Memory, Insights) driving selectedIndex; a component split is tracked follow-up."

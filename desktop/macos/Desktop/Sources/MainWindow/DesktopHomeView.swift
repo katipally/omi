@@ -1395,8 +1395,8 @@ struct ConversationsPageHost: View {
   @State private var selectedConversation: ServerConversation? = nil
   @ObservedObject private var conversationDetailState = ConversationDetailAutomationState.shared
 
-  private var usesAvailableWidth: Bool {
-    MemoryHubLayoutPolicy.usesAvailableWidth(
+  private var contentWidths: MemoryHubLayoutPolicy.ContentWidths {
+    MemoryHubLayoutPolicy.contentWidths(
       conversationID: selectedConversation?.id,
       presentedConversationID: conversationDetailState.openConversationId,
       transcriptDrawerOpen: conversationDetailState.transcriptDrawerOpen
@@ -1404,18 +1404,18 @@ struct ConversationsPageHost: View {
   }
 
   var body: some View {
-    ConversationsPage(appState: appState, selectedConversation: $selectedConversation)
-      .frame(
-        maxWidth: usesAvailableWidth ? .infinity : MemoryHubLayoutPolicy.readableContentWidth,
-        maxHeight: .infinity
-      )
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .animation(.easeInOut(duration: 0.22), value: usesAvailableWidth)
-      // Owner fencing: an open detail view must not keep showing the previous
-      // account's conversation after an in-place account switch.
-      .onReceive(NotificationCenter.default.publisher(for: .runtimeOwnerDidChange)) { _ in
-        selectedConversation = nil
-      }
+    ConversationsPage(
+      appState: appState,
+      selectedConversation: $selectedConversation,
+      contentColumnWidth: contentWidths.column
+    )
+    .frame(maxWidth: contentWidths.scrollView, maxHeight: .infinity)
+    .animation(OmiMotion.gated(.easeInOut(duration: 0.22)), value: contentWidths)
+    // Owner fencing: an open detail view must not keep showing the previous
+    // account's conversation after an in-place account switch.
+    .onReceive(NotificationCenter.default.publisher(for: .runtimeOwnerDidChange)) { _ in
+      selectedConversation = nil
+    }
   }
 }
 

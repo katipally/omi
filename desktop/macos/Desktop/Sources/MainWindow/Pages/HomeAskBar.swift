@@ -39,6 +39,11 @@ struct HomeAskBar: View {
   @Binding var attachments: [ChatAttachment]
   let onAttachmentsAdded: ([URL]) -> Void
   let onAttachmentRemoved: (String) -> Void
+  /// Keeps Connect in the trailing slot while the field is focused but empty.
+  /// The composer holds first responder across a send now, and the slot is
+  /// otherwise blank in exactly that state — so Connect would disappear for
+  /// good after the first message.
+  var keepsConnectWhileEmpty: Bool = false
   let onSend: () -> Void
   let onStop: () -> Void
   let onConnect: () -> Void
@@ -207,17 +212,25 @@ struct HomeAskBar: View {
 
   /// Which control the trailing slot shows. A pure precedence rule, kept
   /// `nonisolated` so it can be exercised without a view or an actor hop.
-  nonisolated static func actionMode(isSending: Bool, canSend: Bool, isFocused: Bool)
-    -> HomeAskBarActionMode
-  {
+  nonisolated static func actionMode(
+    isSending: Bool,
+    canSend: Bool,
+    isFocused: Bool,
+    keepsConnectWhileEmpty: Bool = false
+  ) -> HomeAskBarActionMode {
     if isSending { return .stop }
     if canSend { return .send }
-    if isFocused { return .none }
+    if isFocused && !keepsConnectWhileEmpty { return .none }
     return .connect
   }
 
   private var actionMode: HomeAskBarActionMode {
-    Self.actionMode(isSending: isSending, canSend: canSend, isFocused: isFocused)
+    Self.actionMode(
+      isSending: isSending,
+      canSend: canSend,
+      isFocused: isFocused,
+      keepsConnectWhileEmpty: keepsConnectWhileEmpty
+    )
   }
 
   private var sendButton: some View {

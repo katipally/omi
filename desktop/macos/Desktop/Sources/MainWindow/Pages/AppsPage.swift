@@ -4,137 +4,9 @@ import Combine
 import OmiTheme
 import SwiftUI
 
-// MARK: - Safe Dismiss Button
-/// A dismiss button that prevents click-through to underlying views on macOS.
-/// Uses onTapGesture with async delay to ensure the click is fully consumed before dismissing.
-/// The key is to wait for the full mouse event cycle to complete before triggering dismiss.
-struct SafeDismissButton: View {
-  let dismiss: DismissAction
-  var icon: String = "xmark"
-  var showBackground: Bool = true
-
-  @State private var isPressed = false
-
-  var body: some View {
-    Image(systemName: icon)
-      .scaledFont(size: OmiType.body, weight: .medium)
-      .foregroundColor(isPressed ? OmiColors.textTertiary : OmiColors.textSecondary)
-      .frame(width: 28, height: 28)
-      .background(showBackground ? OmiColors.backgroundSecondary : Color.clear)
-      .clipShape(Circle())
-      .contentShape(Circle())
-      .opacity(isPressed ? 0.7 : 1.0)
-      .onTapGesture {
-        guard !isPressed else { return }  // Prevent double-tap
-        isPressed = true
-
-        let mouseLocation = NSEvent.mouseLocation
-        log("DISMISS: Tap gesture fired at mouse position: \(mouseLocation)")
-
-        // Consume the click by resigning first responder
-        NSApp.keyWindow?.makeFirstResponder(nil)
-
-        // Post a mouse-up event to ensure any pending click is consumed
-        if let window = NSApp.keyWindow {
-          let event = NSEvent.mouseEvent(
-            with: .leftMouseUp,
-            location: window.mouseLocationOutsideOfEventStream,
-            modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 0,
-            clickCount: 1,
-            pressure: 0
-          )
-          if let event = event {
-            window.sendEvent(event)
-            log("DISMISS: Sent synthetic mouse-up event")
-          }
-        }
-
-        // Use async with longer delay to ensure mouse event fully completes
-        Task { @MainActor in
-          log("DISMISS: Starting 250ms delay before dismiss")
-          // Longer delay to ensure mouse-up event is fully processed
-          try? await Task.sleep(nanoseconds: 250_000_000)  // 250ms
-          log("DISMISS: Delay complete, calling dismiss()")
-          log("DISMISS: Mouse position before dismiss: \(NSEvent.mouseLocation)")
-          dismiss()
-          log("DISMISS: dismiss() called")
-        }
-      }
-  }
-}
-
-// MARK: - Dismiss Button (Action-based)
-/// A dismiss button that takes a closure instead of a DismissAction.
-/// Used for overlay-based sheets where the dismiss is controlled externally.
-/// A real Button (not a tap gesture) so accessibility exposes it as a labeled
-/// "Close" control and keyboard users can reach it.
-struct DismissButton: View {
-  let action: () -> Void
-  var icon: String = "xmark"
-  var showBackground: Bool = true
-  var accessibilityLabel: String = "Close"
-
-  var body: some View {
-    Button {
-      log("DISMISS_BUTTON: Activated")
-
-      // Commit any in-progress field editing before tearing the sheet down.
-      NSApp.keyWindow?.makeFirstResponder(nil)
-
-      OmiMotion.withGated(.easeOut(duration: 0.2)) {
-        action()
-      }
-    } label: {
-      Image(systemName: icon)
-        .scaledFont(size: OmiType.body, weight: .medium)
-        .foregroundColor(OmiColors.textSecondary)
-        .frame(width: 28, height: 28)
-        .background(showBackground ? OmiColors.backgroundSecondary : Color.clear)
-        .clipShape(Circle())
-        .contentShape(Circle())
-    }
-    .buttonStyle(DismissButtonPressStyle())
-    .accessibilityLabel(accessibilityLabel)
-  }
-}
-
-private struct DismissButtonPressStyle: ButtonStyle {
-  func makeBody(configuration: ButtonStyleConfiguration) -> some View {
-    configuration.label
-      .opacity(configuration.isPressed ? 0.7 : 1.0)
-  }
-}
-
 enum AppsCatalogInitialSection {
   case imports
   case exports
-}
-
-enum AppsPageCategoryFilter {
-  static let allCategoriesOptionId = ""
-  static let allCategoriesTitle = "All Categories"
-
-  enum Selection: Equatable {
-    case allCategories
-    case category(String)
-  }
-
-  static func categoryDropdownOptions(categories: [OmiAppCategory]) -> [SearchableDropdownOption] {
-    [SearchableDropdownOption(id: allCategoriesOptionId, title: allCategoriesTitle)]
-      + categories.map { SearchableDropdownOption(id: $0.id, title: $0.title) }
-  }
-
-  static func selectedCategoryDropdownId(_ selectedCategory: String?) -> String {
-    selectedCategory ?? allCategoriesOptionId
-  }
-
-  static func categorySelection(forOptionId optionId: String) -> Selection {
-    optionId.isEmpty ? .allCategories : .category(optionId)
-  }
 }
 
 struct AppsPage: View {
@@ -201,15 +73,7 @@ struct AppsPage: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 200)
               } else if filteredApps.isEmpty {
-                VStack(spacing: OmiSpacing.md) {
-                  Image(systemName: "magnifyingglass")
-                    .scaledFont(size: 32)
-                    .foregroundColor(OmiColors.textTertiary)
-                  Text("No apps found")
-                    .scaledFont(size: OmiType.subheading, weight: .medium)
-                    .foregroundColor(OmiColors.textSecondary)
-                }
-                .frame(maxWidth: .infinity, minHeight: 200)
+                filteredEmptyState
               } else {
                 // Back button for "See more" view
                 if viewAllSection != nil {
@@ -507,30 +371,13 @@ struct AppsPage: View {
     activeAutomationCommand = nil
   }
 
-  /// Equally spaced header controls: the search field's layout priority absorbs
-  /// the slack, where a flexible `Spacer` would strand "Create App" at the edge.
   private var searchBar: some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(spacing: OmiSpacing.sm) {
-        searchField
-          .layoutPriority(1)
-        filterControls
-        createAppButton
-        dismissControl
-      }
-
-      VStack(alignment: .leading, spacing: OmiSpacing.sm) {
-        HStack(spacing: OmiSpacing.sm) {
-          searchField
-          dismissControl
-        }
-
-        HStack(spacing: OmiSpacing.sm) {
-          filterControls
-          createAppButton
-        }
-      }
-    }
+    AppsHeaderRow(
+      search: { searchField },
+      filters: { filterControls },
+      create: { createAppButton },
+      dismiss: { dismissControl }
+    )
   }
 
   private var searchField: some View {
@@ -543,18 +390,28 @@ struct AppsPage: View {
 
   private var filterControls: some View {
     HStack(spacing: OmiSpacing.sm) {
-      FilterToggle(
-        icon: "arrow.down.circle",
-        label: "Installed",
-        isActive: appProvider.showInstalledOnly
-      ) {
-        viewAllSection = nil
-        appProvider.showInstalledOnly.toggle()
-        Task { await appProvider.searchApps() }
-      }
-
+      installScopeControl
       categoryMenu
     }
+  }
+
+  /// All / Installed as a two-segment choice. Picking "All" writes the scope and
+  /// nothing else: routing it through `clearFilters()` would drop the search text
+  /// and category the user is still looking at.
+  private var installScopeControl: some View {
+    OmiSegmentedControl(
+      segments: AppsPageInstallScope.segmentTitles,
+      selection: Binding(
+        get: { AppsPageInstallScope.selectionIndex(installedOnly: appProvider.showInstalledOnly) },
+        set: { newValue in
+          let installedOnly = AppsPageInstallScope.installedOnly(forSelectionIndex: newValue)
+          guard installedOnly != appProvider.showInstalledOnly else { return }
+          viewAllSection = nil
+          appProvider.applyInstallScope(installedOnly: installedOnly)
+          Task { await appProvider.searchApps() }
+        }
+      )
+    )
   }
 
   private var categoryMenu: some View {
@@ -598,6 +455,28 @@ struct AppsPage: View {
 
   private var hasActiveFilters: Bool {
     appProvider.hasActiveFilters || viewAllSection != nil
+  }
+
+  private var installScope: AppsPageInstallScope {
+    AppsPageInstallScope.scope(installedOnly: appProvider.showInstalledOnly)
+  }
+
+  private var filteredEmptyState: some View {
+    let copy = AppsPageInstallScope.emptyStateCopy(scope: installScope, searchText: searchText)
+    return VStack(spacing: OmiSpacing.md) {
+      Image(systemName: copy.icon)
+        .scaledFont(size: 32)
+        .foregroundColor(OmiColors.textTertiary)
+      Text(copy.title)
+        .scaledFont(size: OmiType.subheading, weight: .medium)
+        .foregroundColor(OmiColors.textSecondary)
+      if let message = copy.message {
+        Text(message)
+          .scaledFont(size: OmiType.body)
+          .foregroundColor(OmiColors.textTertiary)
+      }
+    }
+    .frame(maxWidth: .infinity, minHeight: 200)
   }
 
   /// Apps for the selected filter/search result set or "See more" section.
@@ -662,6 +541,9 @@ struct AppsPage: View {
     }
   }
 
+  /// Retired: `filteredEmptyState` is the one empty result surface, and it reads
+  /// its copy from `AppsPageInstallScope`. Nothing renders this any more; it
+  /// stays in-tree so its removal can be its own reviewable change.
   private var emptyView: some View {
     VStack(spacing: OmiSpacing.lg) {
       Image(systemName: "square.grid.2x2")
@@ -1801,23 +1683,6 @@ struct ShimmerAppCard: View {
   }
 }
 
-// MARK: - Filter Toggle
-
-struct FilterToggle: View {
-  let icon: String
-  let label: String
-  let isActive: Bool
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      OmiFilterChip(icon: icon, title: label, isActive: isActive)
-        .fixedSize(horizontal: true, vertical: false)
-    }
-    .buttonStyle(.plain)
-  }
-}
-
 // MARK: - Small Header Button
 
 struct SmallHeaderButton: View {
@@ -2076,7 +1941,7 @@ struct SmallAppButton: View {
 
 // MARK: - Filter Sheet
 
-/// Retired: filtering moved into the header's `FilterToggle` and category
+/// Retired: filtering moved into the header's install scope control and category
 /// dropdown, so nothing presents this sheet.
 struct AppFilterSheet: View {
   @ObservedObject var appProvider: AppProvider
@@ -2348,140 +2213,141 @@ struct AppDetailSheet: View {
     }
   }
 
+  /// The catalog icon at header scale. Rendered once, in the pinned band, so
+  /// scrolling the body never takes the app's identity off screen.
+  private var headerIcon: some View {
+    AsyncImage(url: URL(string: app.image)) { phase in
+      switch phase {
+      case .success(let image):
+        image
+          .resizable()
+          .aspectRatio(contentMode: .fill)
+      default:
+        RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius)
+          .fill(OmiColors.backgroundTertiary)
+      }
+    }
+    .frame(width: OmiChrome.controlHeight, height: OmiChrome.controlHeight)
+    .clipShape(RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius))
+  }
+
+  @ViewBuilder
+  private var headerActions: some View {
+    let primaryAction = Self.primaryAppAction(isEnabled: isEnabled, worksExternally: app.worksExternally)
+    HStack(spacing: OmiSpacing.sm) {
+      // Only render a primary button when there is a real action:
+      // install/enable, or open an external integration. An enabled
+      // non-external app has no "open" target — disable is owned by
+      // the trash button, so we never show a primary button that
+      // would otherwise fire a destructive toggle under an "Open" label.
+      if primaryAction != .hidden {
+        Button(action: {
+          Task {
+            switch primaryAction {
+            case .open:
+              // Open the external integration in browser
+              openExternalApp()
+            case .install:
+              if app.worksExternally {
+                await handleInstall()
+              } else {
+                await appProvider.toggleApp(resolvedApp)
+              }
+            case .hidden:
+              break
+            }
+          }
+        }) {
+          if appProvider.isAppLoading(app.id) {
+            ProgressView()
+              .frame(width: 100, height: 36)
+          } else if isSettingUp {
+            HStack(spacing: OmiSpacing.xs) {
+              ProgressView()
+                .scaleEffect(0.7)
+              Text("Setting up...")
+                .scaledFont(size: OmiType.caption, weight: .semibold)
+            }
+            .foregroundColor(OmiColors.textSecondary)
+            .frame(width: 120, height: 36)
+          } else {
+            Text(primaryAction == .open ? "Open" : "Install")
+              .scaledFont(size: OmiType.body, weight: .semibold)
+              .foregroundColor(.black)
+              .frame(width: 100, height: 36)
+              .background(Color.white)
+              .cornerRadius(OmiChrome.controlRadius)
+              .overlay(
+                RoundedRectangle(cornerRadius: OmiChrome.controlRadius)
+                  .stroke(OmiColors.border, lineWidth: 1)
+              )
+          }
+        }
+        .buttonStyle(.plain)
+      }
+
+      // Disable button shown only when app is enabled
+      if isEnabled && !appProvider.isAppLoading(app.id) && !isSettingUp {
+        Button(action: {
+          Task { await appProvider.toggleApp(resolvedApp) }
+        }) {
+          Image(systemName: "trash")
+            .scaledFont(size: OmiType.body)
+            .foregroundColor(OmiColors.error)
+            .frame(width: 36, height: 36)
+            .background(OmiColors.error.opacity(0.1))
+            .cornerRadius(OmiChrome.controlRadius)
+        }
+        .buttonStyle(.plain)
+      }
+    }
+  }
+
+  /// Rating and installs, and the rule under them. Both are absent for a brand
+  /// new app, and an empty strip would put back exactly the blank band the
+  /// header fix removed, so the whole group is conditional.
+  @ViewBuilder
+  private var statsRow: some View {
+    let ratingAvg = appDetails?.ratingAvg ?? app.ratingAvg
+    let ratingCount = appDetails?.ratingCount ?? app.ratingCount
+    let installs = appDetails?.installs ?? app.installs
+    if (ratingAvg != nil && ratingCount > 0) || installs > 0 {
+      HStack(spacing: OmiSpacing.md) {
+        if let ratingAvg, ratingCount > 0 {
+          HStack(spacing: OmiSpacing.xxs) {
+            Image(systemName: "star.fill")
+              .foregroundColor(.yellow)
+            Text(String(format: "%.1f", ratingAvg))
+            Text("(\(ratingCount))")
+          }
+          .scaledFont(size: OmiType.body)
+          .foregroundColor(OmiColors.textSecondary)
+        }
+        if installs > 0 {
+          Text("\(installs) installs")
+            .scaledFont(size: OmiType.body)
+            .foregroundColor(OmiColors.textSecondary)
+        }
+      }
+
+      Divider()
+        .background(OmiColors.backgroundTertiary)
+    }
+  }
+
   var body: some View {
     VStack(spacing: 0) {
-      // Header
-      HStack {
-        Spacer()
-
-        DismissButton(action: dismissSheet)
-      }
-      .padding()
+      OmiSheetHeader(
+        title: app.name,
+        subtitle: app.author,
+        onClose: dismissSheet,
+        leading: { headerIcon },
+        trailing: { headerActions }
+      )
 
       ScrollView {
         VStack(alignment: .leading, spacing: OmiSpacing.xl) {
-          // App header
-          HStack(spacing: OmiSpacing.lg) {
-            AsyncImage(url: URL(string: app.image)) { phase in
-              switch phase {
-              case .success(let image):
-                image
-                  .resizable()
-                  .aspectRatio(contentMode: .fill)
-              default:
-                RoundedRectangle(cornerRadius: OmiChrome.controlRadius)
-                  .fill(OmiColors.backgroundTertiary)
-              }
-            }
-            .frame(width: 80, height: 80)
-            .clipShape(RoundedRectangle(cornerRadius: OmiChrome.controlRadius))
-
-            VStack(alignment: .leading, spacing: OmiSpacing.xs) {
-              Text(app.name)
-                .scaledFont(size: 24, weight: .bold)
-                .foregroundColor(OmiColors.textPrimary)
-
-              Text(app.author)
-                .scaledFont(size: OmiType.body)
-                .foregroundColor(OmiColors.textTertiary)
-
-              HStack(spacing: OmiSpacing.md) {
-                let ratingAvg = appDetails?.ratingAvg ?? app.ratingAvg
-                let ratingCount = appDetails?.ratingCount ?? app.ratingCount
-                let installs = appDetails?.installs ?? app.installs
-                if let ratingAvg, ratingCount > 0 {
-                  HStack(spacing: OmiSpacing.xxs) {
-                    Image(systemName: "star.fill")
-                      .foregroundColor(.yellow)
-                    Text(String(format: "%.1f", ratingAvg))
-                    Text("(\(ratingCount))")
-                  }
-                  .scaledFont(size: OmiType.body)
-                  .foregroundColor(OmiColors.textSecondary)
-                }
-                if installs > 0 {
-                  Text("\(installs) installs")
-                    .scaledFont(size: OmiType.body)
-                    .foregroundColor(OmiColors.textSecondary)
-                }
-              }
-            }
-
-            Spacer()
-
-            // Action button
-            let primaryAction = Self.primaryAppAction(isEnabled: isEnabled, worksExternally: app.worksExternally)
-            HStack(spacing: OmiSpacing.sm) {
-              // Only render a primary button when there is a real action:
-              // install/enable, or open an external integration. An enabled
-              // non-external app has no "open" target — disable is owned by
-              // the trash button, so we never show a primary button that
-              // would otherwise fire a destructive toggle under an "Open" label.
-              if primaryAction != .hidden {
-                Button(action: {
-                  Task {
-                    switch primaryAction {
-                    case .open:
-                      // Open the external integration in browser
-                      openExternalApp()
-                    case .install:
-                      if app.worksExternally {
-                        await handleInstall()
-                      } else {
-                        await appProvider.toggleApp(resolvedApp)
-                      }
-                    case .hidden:
-                      break
-                    }
-                  }
-                }) {
-                  if appProvider.isAppLoading(app.id) {
-                    ProgressView()
-                      .frame(width: 100, height: 36)
-                  } else if isSettingUp {
-                    HStack(spacing: OmiSpacing.xs) {
-                      ProgressView()
-                        .scaleEffect(0.7)
-                      Text("Setting up...")
-                        .scaledFont(size: OmiType.caption, weight: .semibold)
-                    }
-                    .foregroundColor(OmiColors.textSecondary)
-                    .frame(width: 120, height: 36)
-                  } else {
-                    Text(primaryAction == .open ? "Open" : "Install")
-                      .scaledFont(size: OmiType.body, weight: .semibold)
-                      .foregroundColor(.black)
-                      .frame(width: 100, height: 36)
-                      .background(Color.white)
-                      .cornerRadius(OmiChrome.controlRadius)
-                      .overlay(
-                        RoundedRectangle(cornerRadius: OmiChrome.controlRadius)
-                          .stroke(OmiColors.border, lineWidth: 1)
-                      )
-                  }
-                }
-                .buttonStyle(.plain)
-              }
-
-              // Disable button shown only when app is enabled
-              if isEnabled && !appProvider.isAppLoading(app.id) && !isSettingUp {
-                Button(action: {
-                  Task { await appProvider.toggleApp(resolvedApp) }
-                }) {
-                  Image(systemName: "trash")
-                    .scaledFont(size: OmiType.body)
-                    .foregroundColor(OmiColors.error)
-                    .frame(width: 36, height: 36)
-                    .background(OmiColors.error.opacity(0.1))
-                    .cornerRadius(OmiChrome.controlRadius)
-                }
-                .buttonStyle(.plain)
-              }
-            }
-          }
-
-          Divider()
-            .background(OmiColors.backgroundTertiary)
+          statsRow
 
           // Description
           VStack(alignment: .leading, spacing: OmiSpacing.sm) {
@@ -2638,7 +2504,7 @@ struct AppDetailSheet: View {
         .padding()
       }
     }
-    .frame(width: 500, height: 600)
+    .frame(width: 500)
     .background(OmiColors.backgroundPrimary)
     .task {
       await loadReviews()

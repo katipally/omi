@@ -441,7 +441,7 @@ Main Window — Top Navigation Bar (use `click` for all nav buttons)
 │   ├── Conversations — Live section, search, category filters (All/Starred/Work/Personal/Social), conversation list
 │   └── Brain Map — interactive node graph visualization
 ├── Tasks — search, Today/No Deadline sections, keyboard toolbar (Navigate/New/Delete/Indent/Outdent)
-├── Apps — search, Installed filter, Category dropdown, Create App
+├── Apps — search, All/Installed segmented control, Category dropdown, Create App
 │   ├── Imports (Calendar, Email, Local files, Apple Notes, X, ChatGPT, Claude)
 │   └── Exports (Notion, Obsidian, ChatGPT/Codex)
 │
@@ -518,7 +518,7 @@ Reference flows in `desktop/macos/e2e/flows/*.yaml` describe the app's key user 
 | `flows/home.yaml` | Home tab, embedded chat, insights, status banners | 5 | Chat input, insight cards, Capture/Listening status |
 | `flows/memories.yaml` | Memory tab — Memories, Conversations, Brain Map sub-tabs | 6 | Sub-tab switching, search, conversation list, brain map render |
 | `flows/tasks.yaml` | Tasks tab — search, Today/No Deadline sections | 5 | Task list, keyboard toolbar, task interactions |
-| `flows/apps-marketplace.yaml` | Apps tab — Imports, Exports, search, filters | 5 | Category filter, Installed view, Create App |
+| `flows/apps-marketplace.yaml` | Apps tab — Imports, Exports, search, filters | 5 | Category filter, All/Installed scope, Create App |
 | `flows/settings-basic.yaml` | Settings — all 9 sections | 11 | General through About, verify each loads |
 | `flows/rewind.yaml` | Rewind overlay — View menu access, permission gate | 4 | ⌘⌥R shortcut, search, date picker, Grant Permission |
 | `flows/chat-hermetic.yaml` | Home chat with Rust `OMI_LLM_STUB=1` | 6 | Hermetic chat send/receive in Home tab |

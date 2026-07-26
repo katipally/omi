@@ -5,6 +5,7 @@ description: Apps tab — Imports, Exports, search, filters, Create App (v0.12.1
 app: com.omi.computer-macos
 covers:
   - desktop/macos/Desktop/Sources/MainWindow/Pages/AppsPage.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Pages/AppsPageFilterControls.swift
   - desktop/macos/Desktop/Sources/MainWindow/Components/SearchableDropdown.swift
   - desktop/macos/Desktop/Sources/Providers/AppProvider.swift
 preconditions:
@@ -34,7 +35,7 @@ steps:
 
   - id: S4
     name: Verify search and filter controls
-    do: "Verify the search bar ('Search apps...') is at the top. Check for Installed filter button, Category dropdown, and Create App button."
+    do: "Verify the search bar ('Search apps...') is at the top. Check for the All/Installed segmented control, Category dropdown, and Create App button."
     expect:
       interactive_count: { min: 3 }
 

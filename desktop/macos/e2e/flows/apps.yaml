@@ -5,6 +5,7 @@ description: Apps/Integrations marketplace flow — browse apps, filter by categ
 app: com.omi.computer-macos
 covers:
   - desktop/macos/Desktop/Sources/MainWindow/Pages/AppsPage.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Pages/AppsPageFilterControls.swift
   - desktop/macos/Desktop/Sources/MainWindow/Pages/AppInstallControls.swift
   - desktop/macos/Desktop/Sources/MainWindow/Components/SearchableDropdown.swift
   - desktop/macos/Desktop/Sources/MainWindow/ModalPresentationState.swift
@@ -18,7 +19,7 @@ preconditions:
 steps:
   - id: S1
     name: Navigate to Apps page
-    do: "Click the Apps sidebar icon (identifier: sidebar_apps) to navigate to the Apps/Integrations page. Verify the marketplace loads with app cards, search bar, category filter, and Installed/Create App buttons."
+    do: "Click the Apps sidebar icon (identifier: sidebar_apps) to navigate to the Apps/Integrations page. Verify the marketplace loads with app cards, search bar, the All/Installed segmented control (All selected), category filter, and the Create App button."
     expect:
       interactive_count: { min: 10 }
       text_visible:
@@ -38,13 +39,13 @@ steps:
 
   - id: S4
     name: View Installed apps
-    do: "Click the 'Installed' button to switch to the installed apps view. Verify the view shows currently installed/enabled integrations."
+    do: "Click the 'Installed' segment of the All/Installed control. Verify it becomes the selected segment and the view shows currently installed/enabled integrations, or the 'No installed apps' empty state when none are installed."
     expect:
       interactive_count: { min: 3 }
 
   - id: S5
     name: Return to all apps
-    do: "Click 'All' or navigate back to the full app marketplace listing. Verify all app cards are visible again."
+    do: "Click the 'All' segment of the All/Installed control. Verify all app cards are visible again and that the search text and the category selection from the earlier steps are still applied — 'All' must widen the install scope only, never clear the other filters."
     expect:
       interactive_count: { min: 5 }
 

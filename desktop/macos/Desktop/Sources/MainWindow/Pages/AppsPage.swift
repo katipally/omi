@@ -167,6 +167,17 @@ struct AppsPage: View {
       Divider()
         .background(OmiColors.backgroundTertiary)
 
+      // An install or search that failed has to say so here; the card's button
+      // returns to its resting state on failure and reads as an untouched control.
+      if let errorMessage = appProvider.errorMessage {
+        AppInstallErrorBanner(message: errorMessage) {
+          appProvider.errorMessage = nil
+        }
+        .padding(.horizontal, OmiSpacing.lg)
+        .padding(.top, OmiSpacing.md)
+        .transition(.move(edge: .top).combined(with: .opacity))
+      }
+
       // Content
       if appProvider.isLoading {
         loadingShimmerView
@@ -307,6 +318,7 @@ struct AppsPage: View {
       }
     }
     .background(OmiColors.backgroundPrimary)
+    .omiAnimation(SBMotion.standard, value: appProvider.errorMessage)
     .onChange(of: searchText) { _, newValue in
       appProvider.searchQuery = newValue
       // Clear filters when searching
@@ -384,6 +396,9 @@ struct AppsPage: View {
     }
     .onDisappear {
       rejectActiveAutomationPresentationIfNeeded()
+      // The banner belongs to this visit. Leaving the page and coming back to a
+      // failure the user already walked away from reads as a fresh failure.
+      appProvider.errorMessage = nil
     }
     .task {
       await connectorStatusStore.refresh()
@@ -1827,6 +1842,8 @@ struct SmallHeaderButton: View {
 
 // MARK: - Horizontal App Section
 
+/// Retired: the catalog renders grid sections, so nothing in the repo builds a
+/// horizontal one. It stays in-tree so its removal can be its own reviewable change.
 struct HorizontalAppSection: View {
   let title: String
   let apps: [OmiApp]
@@ -1940,6 +1957,7 @@ struct AppGridSection: View {
 
 // MARK: - Compact App Card (for horizontal scroll)
 
+/// Retired along with `HorizontalAppSection`, its only call site.
 struct CompactAppCard: View {
   let app: OmiApp
   let appProvider: AppProvider
@@ -2018,6 +2036,7 @@ struct CompactAppCard: View {
 
 // MARK: - Small App Button
 
+/// Retired along with `CompactAppCard`, its only call site.
 struct SmallAppButton: View {
   let app: OmiApp
   let appProvider: AppProvider
@@ -2055,146 +2074,10 @@ struct SmallAppButton: View {
   }
 }
 
-// MARK: - App Card (Full)
-
-struct AppCard: View {
-  let app: OmiApp
-  let appProvider: AppProvider
-  let onSelect: () -> Void
-
-  @State private var isHovering = false
-
-  var body: some View {
-    Button(action: onSelect) {
-      VStack(alignment: .leading, spacing: OmiSpacing.sm) {
-        HStack(spacing: OmiSpacing.md) {
-          // App icon
-          AsyncImage(url: URL(string: app.image)) { phase in
-            switch phase {
-            case .success(let image):
-              image
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-            default:
-              appIconPlaceholder
-            }
-          }
-          .frame(width: 50, height: 50)
-          .clipShape(RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius))
-
-          VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
-            Text(app.name)
-              .scaledFont(size: OmiType.body, weight: .medium)
-              .foregroundColor(OmiColors.textPrimary)
-              .lineLimit(1)
-
-            Text(app.author)
-              .scaledFont(size: OmiType.caption)
-              .foregroundColor(OmiColors.textTertiary)
-              .lineLimit(1)
-          }
-
-          Spacer()
-        }
-
-        Text(app.description)
-          .scaledFont(size: OmiType.caption)
-          .foregroundColor(OmiColors.textSecondary)
-          .lineLimit(2)
-          .multilineTextAlignment(.leading)
-
-        HStack {
-          // Rating and installs
-          HStack(spacing: OmiSpacing.xs) {
-            if let rating = app.formattedRating {
-              HStack(spacing: OmiSpacing.hairline) {
-                Image(systemName: "star.fill")
-                  .scaledFont(size: OmiType.micro)
-                  .foregroundColor(.yellow)
-                Text(rating)
-                  .scaledFont(size: OmiType.caption)
-                  .foregroundColor(OmiColors.textTertiary)
-              }
-            }
-            if let installs = app.formattedInstalls {
-              HStack(spacing: OmiSpacing.hairline) {
-                Image(systemName: "arrow.down.circle")
-                  .scaledFont(size: OmiType.micro)
-                  .foregroundColor(OmiColors.textTertiary)
-                Text(installs)
-                  .scaledFont(size: OmiType.caption)
-                  .foregroundColor(OmiColors.textTertiary)
-              }
-            }
-          }
-
-          Spacer()
-
-          // Get/Open button
-          AppActionButton(app: app, appProvider: appProvider, onOpen: onSelect)
-        }
-      }
-      .padding(OmiSpacing.md)
-      .background(isHovering ? OmiColors.backgroundTertiary : OmiColors.backgroundSecondary)
-      .cornerRadius(OmiChrome.smallControlRadius)
-    }
-    .buttonStyle(.plain)
-    .onHover { hovering in
-      isHovering = hovering
-    }
-  }
-
-  private var appIconPlaceholder: some View {
-    RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius)
-      .fill(OmiColors.backgroundTertiary)
-      .overlay(
-        Image(systemName: "app.fill")
-          .foregroundColor(OmiColors.textTertiary)
-      )
-  }
-}
-
-// MARK: - App Action Button
-
-struct AppActionButton: View {
-  let app: OmiApp
-  let appProvider: AppProvider
-  var onOpen: (() -> Void)? = nil
-
-  var body: some View {
-    Button(action: {
-      if app.enabled {
-        // If already enabled, open the app detail
-        onOpen?()
-      } else {
-        // If not enabled, enable it
-        Task { await appProvider.toggleApp(app) }
-      }
-    }) {
-      if appProvider.isAppLoading(app.id) {
-        ProgressView()
-          .scaleEffect(0.7)
-          .frame(width: 60, height: 28)
-      } else {
-        Text(app.enabled ? "Open" : "Install")
-          .scaledFont(size: OmiType.caption, weight: .medium)
-          .foregroundColor(.black)
-          .frame(width: 60, height: 28)
-          .background(Color.white)
-          .cornerRadius(OmiChrome.chipRadius)
-          .overlay(
-            RoundedRectangle(cornerRadius: OmiChrome.chipRadius)
-              .stroke(OmiColors.border, lineWidth: 1)
-          )
-      }
-    }
-    .buttonStyle(.plain)
-    .disabled(appProvider.isAppLoading(app.id))
-  }
-}
-
 // MARK: - Filter Sheet
 
+/// Retired: filtering moved into the header's `FilterToggle` and category
+/// dropdown, so nothing presents this sheet.
 struct AppFilterSheet: View {
   @ObservedObject var appProvider: AppProvider
   var onDismiss: (() -> Void)? = nil
@@ -2311,6 +2194,7 @@ struct AppFilterSheet: View {
 
 // MARK: - Filter Chip
 
+/// Retired along with `AppFilterSheet`, its only call site.
 struct FilterChip: View {
   let label: String
   let isSelected: Bool
@@ -2414,9 +2298,16 @@ struct AppDetailSheet: View {
   @State private var isSetupCompleted = false
   @State private var setupCheckTask: Task<Void, Never>?
 
-  /// Always read live from appProvider so state survives tab switches and sheet recreations
+  /// Always read live from appProvider so state survives tab switches and sheet
+  /// recreations, and so a sheet opened from a search result (an app that exists
+  /// only in `filteredApps`) still tracks its real install state.
   var isEnabled: Bool {
-    appProvider.apps.first(where: { $0.id == app.id })?.enabled ?? app.enabled
+    AppInstallDecision.resolvedEnabled(
+      appId: app.id,
+      capturedEnabled: app.enabled,
+      installedApps: appProvider.apps,
+      filteredApps: appProvider.filteredApps
+    )
   }
 
   /// The primary action the detail-sheet button offers, derived once from the

@@ -372,6 +372,9 @@ class AppProvider: ObservableObject {
   /// Toggle app enabled state
   func toggleApp(_ app: OmiApp) async {
     appLoadingStates[app.id] = true
+    // A retry owns the failure surface: the previous attempt's message must not
+    // outlive the attempt that replaces it.
+    errorMessage = nil
     defer { appLoadingStates[app.id] = false }
 
     do {
@@ -405,7 +408,12 @@ class AppProvider: ObservableObject {
       log("Toggled app \(app.id) to enabled=\(!app.enabled)")
     } catch {
       logError("Failed to toggle app", error: error)
-      errorMessage = "Failed to \(app.enabled ? "disable" : "enable") app"
+      // Named so a failure buried under a grid of cards still says which app it
+      // was, and phrased as a next step rather than a status code.
+      errorMessage =
+        app.enabled
+        ? "Couldn't remove \(app.name). Check your connection and try again."
+        : "Couldn't install \(app.name). Check your connection and try again."
     }
   }
 

@@ -118,7 +118,7 @@ struct CaptureListeningControls: View {
       cycleMode: cycleListeningMode
     )
     .onHover { hoverListening = $0 }
-    .overlay(alignment: .top) {
+    .overlay(alignment: HoverRevealAnchor.chipTrailing.overlayAlignment) {
       if hoverListening || hoverListeningModes {
         listeningModeChip
           .offset(y: 34)
@@ -220,6 +220,46 @@ struct CaptureListeningControls: View {
   private func syncCaptureState() {
     CaptureListeningLogic.syncCaptureState(
       screenAnalysisEnabled: $screenAnalysisEnabled, isCaptureMonitoring: $isCaptureMonitoring)
+  }
+}
+
+/// Which point on its chip a top-bar hover reveal hangs from.
+///
+/// A reveal is an overlay on its chip, so a panel wider than the chip has to
+/// spill somewhere: anchored at the chip's centre it spills half the difference
+/// past each side. A chip with room on both sides can afford that; the chip
+/// pinned to the bar's trailing edge cannot, because half the spill lands
+/// outside the window. `chipTrailing` grows the panel inward instead.
+enum HoverRevealAnchor {
+  case chipCenter
+  case chipTrailing
+
+  /// Where along a width the anchor sits. `overlayAlignment` hands SwiftUI the
+  /// same fraction, so the two cannot describe different placements.
+  var unitPoint: CGFloat {
+    switch self {
+    case .chipCenter: return 0.5
+    case .chipTrailing: return 1
+    }
+  }
+
+  var overlayAlignment: Alignment {
+    switch self {
+    case .chipCenter: return .top
+    case .chipTrailing: return .topTrailing
+    }
+  }
+
+  /// The x-range the panel occupies in the top bar's content coordinates. The
+  /// Listening chip ends flush with that content's trailing edge, so
+  /// `containerWidth` doubles as the chip's own trailing edge.
+  func panelBounds(chipWidth: CGFloat, panelWidth: CGFloat, containerWidth: CGFloat)
+    -> ClosedRange<CGFloat>
+  {
+    let width = max(0, panelWidth)
+    let anchorX = containerWidth - chipWidth + chipWidth * unitPoint
+    let minX = anchorX - width * unitPoint
+    return minX...(minX + width)
   }
 }
 

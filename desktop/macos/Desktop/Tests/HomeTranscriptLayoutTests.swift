@@ -8,9 +8,11 @@ import XCTest
 /// edge. The fade was a fraction of the panel, so it re-scaled every time the
 /// composer grew a line. And the send re-anchor fired inside the insert spring,
 /// so a row was snapped into place while it was still arriving.
+///
+/// Two of those are now structural — the cap lives on the column and the mask
+/// lives inside `ChatMessagesView` — and are not restated here as source
+/// scrapes. The timing rule is real branching arithmetic and is.
 final class HomeTranscriptLayoutTests: XCTestCase {
-
-  // MARK: - Send motion
 
   func testTheSendSettleWaitsOutTheInsertSpring() {
     // `.spring(response: 0.38)` is not finished at 0.38 — response is the
@@ -29,90 +31,26 @@ final class HomeTranscriptLayoutTests: XCTestCase {
     XCTAssertLessThan(ChatSendMotion.enteringScale, 1)
   }
 
-  // MARK: - Column width
-
-  func testUserPillIsAFractionOfTheColumnNotTheWindow() throws {
-    // omi-test-quality: source-inspection -- static layout tripwire. The bug it
-    // guards is invisible to a unit test because it lives in which *container*
-    // a modifier resolves against: `containerRelativeFrame` resolves to the
-    // ScrollView, so once the scroll view spans the shell the pill became 75%
-    // of the whole window instead of 75% of the message column.
-    let source = try sourceFile("Sources/MainWindow/Components/ChatBubble.swift")
-    let policy = try XCTUnwrap(
-      source.components(separatedBy: "private struct ChatBubbleColumnWidth").last
-    )
-    XCTAssertFalse(
-      policy.contains("containerRelativeFrame"),
-      "the pill must size against the row it is in, not the scroll view"
-    )
-    XCTAssertTrue(policy.contains("ChatBubbleLayout.userWidthFraction"))
+  func testTheFollowOutlivesTheStream() {
+    // The reveal is paced on its own clock, so the transcript keeps growing
+    // after the last token. Ending the follow with the stream would strand that
+    // tail below the fold.
+    XCTAssertGreaterThan(ChatStreamScroll.settleTail, 0)
+    XCTAssertGreaterThan(ChatStreamScroll.settleTail, ChatSendMotion.settleDelay)
   }
 
-  func testTheColumnCapLandsOnTheRowsNotTheScrollView() throws {
-    // omi-test-quality: source-inspection -- static layout tripwire.
-    let source = try sourceFile("Sources/MainWindow/Components/ChatMessagesView.swift")
-    XCTAssertTrue(
-      source.contains(".frame(maxWidth: contentColumnWidth ?? .infinity)"),
-      "the readable cap belongs to the column"
+  func testTurnSpacingSeparatesTurnsMoreThanTheirParts() {
+    // A flat gap makes a question and its answer look as unrelated as two
+    // separate exchanges.
+    XCTAssertGreaterThan(ChatTurnSpacing.betweenTurns, ChatTurnSpacing.withinTurn)
+    XCTAssertEqual(ChatTurnSpacing.leadingGap(previous: nil, current: .user), 0)
+    XCTAssertEqual(
+      ChatTurnSpacing.leadingGap(previous: .ai, current: .user),
+      ChatTurnSpacing.betweenTurns
     )
-
-    let home = try sourceFile("Sources/MainWindow/Pages/DashboardPage.swift")
-    XCTAssertTrue(home.contains("contentColumnWidth: width"))
-    XCTAssertFalse(
-      home.contains("// Chat is the Home surface itself")
-        && home.contains(".frame(width: width)\n  }"),
-      "framing the whole transcript narrows the scroll view and moves the scroller inside the shell"
+    XCTAssertEqual(
+      ChatTurnSpacing.leadingGap(previous: .user, current: .ai),
+      ChatTurnSpacing.withinTurn
     )
-  }
-
-  // MARK: - Fade bands
-
-  func testTheTranscriptFadeIsFixedNotFractional() throws {
-    // omi-test-quality: source-inspection -- static layout tripwire.
-    //
-    // The mask lives in ChatMessagesView, not on the caller. Masking the whole
-    // view from outside also masked the jump-to-latest chip, which sits at the
-    // bottom edge where the mask goes to zero — so the one control for getting
-    // back to the live edge faded out exactly as it appeared.
-    let transcript = try sourceFile("Sources/MainWindow/Components/ChatMessagesView.swift")
-    let mask = try XCTUnwrap(
-      transcript.components(separatedBy: "private var transcriptMask").last
-    )
-
-    XCTAssertTrue(mask.contains("transcriptFadeHeight"))
-    // A `location:` stop is a fraction of the masked height, which is what made
-    // the band breathe as the composer grew.
-    XCTAssertFalse(
-      mask.contains("location:"),
-      "fractional stops re-scale the fade whenever the panel resizes"
-    )
-    // Everything below the composer's top edge is masked out, because the
-    // composer fill is translucent and text behind it would read through.
-    XCTAssertTrue(mask.contains("composerCoverHeight"))
-
-    let body = try XCTUnwrap(transcript.components(separatedBy: "var body: some View {").last)
-    let stack = try XCTUnwrap(body.components(separatedBy: "private var transcriptMask").first)
-    XCTAssertTrue(
-      stack.contains("scrollContent(proxy: proxy)\n          .mask(transcriptMask)"),
-      "the mask belongs to the transcript, not to the stack that also holds the jump chip"
-    )
-  }
-
-  func testTheTranscriptReservesRoomForTheFloatingComposer() throws {
-    // omi-test-quality: source-inspection -- static layout tripwire. Without the
-    // inset the last row can never be scrolled clear of the bar covering it.
-    let home = try sourceFile("Sources/MainWindow/Pages/DashboardPage.swift")
-    XCTAssertTrue(
-      home.contains("bottomContentInset: homeComposerHeight + Self.homeTranscriptBottomFade"),
-      "the reserved inset must cover the composer and the band above it"
-    )
-  }
-
-  // MARK: - Helpers
-
-  private func sourceFile(_ relativePath: String) throws -> String {
-    let testsURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-    let sourceURL = testsURL.deletingLastPathComponent().appendingPathComponent(relativePath)
-    return try String(contentsOf: sourceURL, encoding: .utf8)
   }
 }

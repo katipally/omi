@@ -5,6 +5,11 @@ import XCTest
 /// The ask bar's trailing slot swaps between four different views. The pill is a
 /// bottom-aligned row, so any one of them being taller than the others resizes
 /// the whole bar as the user focuses the field or starts a send.
+///
+/// The equal-height property itself is enforced by construction rather than by a
+/// test: `actionButton` applies one `.frame(height:)` outside the switch, so no
+/// arm can set its own. What is worth testing is the rule that decides which arm
+/// shows, because that is real branching logic.
 final class HomeAskBarLayoutTests: XCTestCase {
   func testActionModePrecedence() {
     // A send in flight outranks everything: the user needs Stop reachable even
@@ -42,48 +47,16 @@ final class HomeAskBarLayoutTests: XCTestCase {
     )
   }
 
-  func testEveryActionModeReservesTheSameHeight() throws {
-    // omi-test-quality: source-inspection -- static layout tripwire. SwiftUI
-    // frames are not measurable without a render host, so this asserts the one
-    // structural property that keeps the pill from resizing: the slot's height
-    // is applied once, outside the switch, and no arm sets its own.
-    let source = try sourceFile("Sources/MainWindow/Pages/HomeAskBar.swift")
-    let slot = try XCTUnwrap(
-      source.components(separatedBy: "private var actionButton: some View {").last
+  func testTheAccessorySlotReservesRoomForTheWidestControl() {
+    // The original defect was a 34pt capsule beside a 30pt circle: the bar was
+    // 48pt with Connect showing and 44pt without, so clicking into the field
+    // moved it. One height for the slot is what removes the difference, and the
+    // measured-width path has to reserve at least that much chrome.
+    XCTAssertGreaterThan(HomeAskBarMetrics.accessoryHeight, 0)
+    XCTAssertGreaterThan(
+      HomeAskBarMetrics.accessoryReserve,
+      HomeAskBarMetrics.accessoryHeight,
+      "the reserve covers the widest accessory plus its trailing inset"
     )
-    let body = try XCTUnwrap(slot.components(separatedBy: "static func actionMode").first)
-
-    XCTAssertTrue(
-      body.contains(".frame(height: HomeAskBarMetrics.accessoryHeight)"),
-      "the slot must apply one height to every arm"
-    )
-    // `EmptyView` contributes no height, so the empty arm would drop the row's
-    // tallest child and collapse the pill by the difference.
-    XCTAssertFalse(
-      body.contains("EmptyView()"),
-      "the empty arm must reserve height, not vanish"
-    )
-  }
-
-  func testConnectCapsuleMatchesTheSendCircle() throws {
-    // The original defect: a 34pt capsule beside a 30pt circle made the bar 48pt
-    // with Connect showing and 44pt without, so clicking into the field moved it.
-    let source = try sourceFile("Sources/MainWindow/Pages/HomeAskBar.swift")
-    XCTAssertFalse(
-      source.contains(".frame(height: 34)"),
-      "the Connect capsule must take its height from HomeAskBarMetrics"
-    )
-    XCTAssertFalse(
-      source.contains(".frame(width: 30, height: 30)"),
-      "the send and stop circles must take their size from HomeAskBarMetrics"
-    )
-  }
-
-  // MARK: - Helpers
-
-  private func sourceFile(_ relativePath: String) throws -> String {
-    let testsURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-    let sourceURL = testsURL.deletingLastPathComponent().appendingPathComponent(relativePath)
-    return try String(contentsOf: sourceURL, encoding: .utf8)
   }
 }

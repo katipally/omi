@@ -107,9 +107,11 @@ final class AppsPagePrimaryActionTests: XCTestCase {
   }
 
   private func makeApp(id: String, enabled: Bool) throws -> OmiApp {
-    let json = """
+    let json = try XCTUnwrap(
+      """
       {"id": "\(id)", "name": "App \(id)", "enabled": \(enabled)}
-      """.data(using: .utf8)!
+      """.data(using: .utf8)
+    )
     return try JSONDecoder().decode(OmiApp.self, from: json)
   }
 }

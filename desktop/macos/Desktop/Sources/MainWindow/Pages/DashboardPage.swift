@@ -823,10 +823,11 @@ struct DashboardPage: View {
 
       // Above the ask bar while the chat is empty — but not for a just-onboarded
       // user, whose empty chat shows the personalized opener's own starters.
-      if chatProvider.messages.isEmpty, chatProvider.onboardingOpener == nil {
+      if showsRollingSuggestions {
         homeRollingSuggestions
           .frame(width: askBarWidth)
           .padding(.bottom, OmiSpacing.sm)
+          .transition(.homeSuggestionsFade)
       }
 
       homeAskBar
@@ -837,6 +838,16 @@ struct DashboardPage: View {
         .frame(width: askBarWidth)
         .padding(.top, OmiSpacing.sm)
     }
+    // The suggestion block is three rows tall. Dropping it on the first send
+    // with no transaction takes that height out from under the transcript in a
+    // single frame, which lands on top of the row-insert spring and reads as
+    // the whole stage flinching. One curve owns the handover.
+    .omiAnimation(SBMotion.message, value: showsRollingSuggestions)
+  }
+
+  /// Whether the rolling prompt suggestions have a reason to be on screen.
+  private var showsRollingSuggestions: Bool {
+    chatProvider.messages.isEmpty && chatProvider.onboardingOpener == nil
   }
 
   /// Kicks off the hub's staggered entrance and its subtle ambient rotation.
@@ -1305,10 +1316,14 @@ struct DashboardPage: View {
     }
 
     let attributes: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: 15)
+      .font: NSFont.systemFont(ofSize: OmiType.subheading)
     ]
     let measuredTextWidth = (text as NSString).size(withAttributes: attributes).width
-    let chromeWidth: CGFloat = 210
+    // Leading inset + paperclip + gaps + the trailing action slot. Sized from
+    // the slot's own constant rather than a number tuned against the Connect
+    // chip, which is not the mode the bar is in once the field has focus and
+    // there is a draft to measure.
+    let chromeWidth = OmiSpacing.lg + 24 + OmiSpacing.sm * 2 + HomeAskBarMetrics.accessoryReserve
     return min(availableWidth, max(Self.homeAskBarMinWidth, measuredTextWidth + chromeWidth))
   }
 
@@ -1597,6 +1612,12 @@ struct DashboardPage: View {
     )
   }
 
+  /// The retired Home-specific copy of the Capture/Listening chips. Nothing
+  /// renders it since the shell rework gave the top bar one persistent copy on
+  /// every page, `CaptureListeningControls`; it stays in-tree so its removal can
+  /// be its own reviewable change. Because it is unreachable it does not get the
+  /// truthful chip state the live copy has — reconnecting it would mean adopting
+  /// that first.
   private var homeHeader: some View {
     let transcriptionUnavailable = appState.transcriptionServiceError != nil
 
@@ -2219,270 +2240,6 @@ private enum HomeRowStatus {
 private enum HomeDestinationProminence {
   case primary
   case quiet
-}
-
-/// The persistent home ask bar: a pill-shaped chat input with attachments
-/// (paperclip + drag-drop, same limits as the chat page), a send/stop action,
-/// and the Connect toggle living inside the pill.
-struct HomeAskBar: View {
-  @Binding var text: String
-  let isSending: Bool
-  let isStopping: Bool
-  let isConnectActive: Bool
-  var focus: FocusState<Bool>.Binding
-  @Binding var attachments: [ChatAttachment]
-  let onAttachmentsAdded: ([URL]) -> Void
-  let onAttachmentRemoved: (String) -> Void
-  let onSend: () -> Void
-  let onStop: () -> Void
-  let onConnect: () -> Void
-  let onActivate: () -> Void
-
-  @State private var isHovering = false
-  @State private var isDropTargeted = false
-
-  private var hasText: Bool {
-    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-  }
-
-  /// Requires text: ChatProvider.sendMessage drops empty-text sends, so
-  /// presenting attachment-only as sendable would silently do nothing.
-  /// Staged files ride along with the typed message instead.
-  private var canSend: Bool {
-    hasText
-  }
-
-  private var isFocused: Bool { focus.wrappedValue }
-
-  private var shellStroke: Color {
-    if isDropTargeted { return Color.white.opacity(0.42) }
-    return Color.white.opacity(isFocused ? 0.22 : 0.08)
-  }
-
-  var body: some View {
-    VStack(spacing: OmiSpacing.sm) {
-      if !attachments.isEmpty {
-        AttachmentPreviewRow(
-          attachments: attachments,
-          onRemove: onAttachmentRemoved
-        )
-        .padding(.top, OmiSpacing.sm)
-        .padding(.horizontal, OmiSpacing.md)
-      }
-
-      HStack(alignment: .bottom, spacing: OmiSpacing.sm) {
-        Button(action: pickFiles) {
-          Image(systemName: "paperclip")
-            .scaledFont(size: OmiType.subheading, weight: .medium)
-            .foregroundStyle(isFocused ? HomePalette.secondary : HomePalette.muted)
-            .frame(width: 24, height: 30)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(attachments.count >= kMaxChatAttachments)
-        .help("Attach files")
-
-        // Auto-growing input: `axis: .vertical` + `lineLimit(1...6)` grow the pill
-        // as text wraps (scrolls past six lines). Return submits, Shift+Return
-        // newlines — via onKeyPress, since a vertical field would otherwise insert
-        // a newline on Return and never fire onSubmit.
-        TextField(
-          "",
-          text: $text,
-          prompt: Text("Ask omi anything").foregroundColor(HomePalette.muted),
-          axis: .vertical
-        )
-        .textFieldStyle(.plain)
-        .font(.system(size: 15))
-        .foregroundStyle(HomePalette.ink)
-        .lineLimit(1...6)
-        .focused(focus)
-        .padding(.vertical, 5)
-        .onKeyPress(phases: .down) { press in
-          guard press.key == .return else { return .ignored }
-          // Shift+Return falls through to the field's newline handling.
-          if press.modifiers.contains(.shift) { return .ignored }
-          handleSubmit()
-          return .handled
-        }
-
-        actionButton
-      }
-      .padding(.leading, OmiSpacing.lg)
-      .padding(.trailing, OmiSpacing.sm)
-      .padding(.vertical, 7)
-      .frame(minHeight: 44)
-    }
-    // Same recipe as OmiSearchField and omiSegmentedTrack: a translucent white
-    // wash under a crisp 1px ring that brightens on focus.
-    .background(
-      RoundedRectangle(cornerRadius: 22, style: .continuous)
-        .fill(Color.white.opacity(isFocused ? 0.10 : (isHovering ? 0.08 : 0.06)))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: 22, style: .continuous)
-        .stroke(shellStroke, lineWidth: 1)
-    )
-    .shadow(color: .black.opacity(0.38), radius: 10, y: 4)
-    .contentShape(.rect(cornerRadius: 22))
-    .onTapGesture {
-      onActivate()
-      focus.wrappedValue = true
-    }
-    .onHover { isHovering = $0 }
-    .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
-    .omiAnimation(.easeOut(duration: 0.16), value: isFocused)
-    .omiAnimation(.easeOut(duration: 0.16), value: canSend)
-    .omiAnimation(.easeOut(duration: 0.16), value: attachments.count)
-  }
-
-  private func pickFiles() {
-    let panel = NSOpenPanel()
-    panel.canChooseFiles = true
-    panel.canChooseDirectories = false
-    panel.allowsMultipleSelection = true
-    panel.allowedContentTypes = [
-      .image, .jpeg, .png, .gif, .heic, .heif, .webP, .tiff, .bmp,
-      .pdf, .plainText, .json, .commaSeparatedText, .html,
-      .text, .content,
-    ]
-    if panel.runModal() == .OK {
-      let remaining = max(0, kMaxChatAttachments - attachments.count)
-      let urls = Array(panel.urls.prefix(remaining))
-      if !urls.isEmpty {
-        onAttachmentsAdded(urls)
-      }
-    }
-  }
-
-  private func handleDrop(providers: [NSItemProvider]) -> Bool {
-    ChatAttachmentDropHandler.collectURLs(from: providers) { [attachments] urls in
-      guard !urls.isEmpty else { return }
-      let remaining = max(0, kMaxChatAttachments - attachments.count)
-      let allowed = Array(urls.prefix(remaining))
-      if !allowed.isEmpty {
-        onAttachmentsAdded(allowed)
-      }
-    }
-  }
-
-  private func handleSubmit() {
-    if isSending {
-      onStop()
-    } else if canSend {
-      onSend()
-    }
-  }
-
-  @ViewBuilder
-  private var actionButton: some View {
-    switch actionMode {
-    case .stop:
-      stopButton
-    case .send:
-      sendButton
-    case .connect:
-      connectButton
-    case .none:
-      EmptyView()
-    }
-  }
-
-  private var actionMode: HomeAskBarActionMode {
-    if isSending { return .stop }
-    if canSend { return .send }
-    if isFocused { return .none }
-    return .connect
-  }
-
-  private var sendButton: some View {
-    Button(action: handleSubmit) {
-      ZStack {
-        Circle()
-          .fill(Color.white)
-
-        Image(systemName: "arrow.up")
-          .scaledFont(size: OmiType.body, weight: .bold)
-          .foregroundStyle(Color.black)
-      }
-      .frame(width: 30, height: 30)
-      .contentShape(Circle())
-    }
-    .buttonStyle(.plain)
-    .help("Send")
-    .accessibilityLabel("Send message")
-  }
-
-  private var stopButton: some View {
-    Button(action: onStop) {
-      ZStack {
-        Circle()
-          .fill(Color.white.opacity(0.14))
-
-        if isStopping {
-          ProgressView()
-            .controlSize(.small)
-            .scaleEffect(0.6)
-        } else {
-          Image(systemName: "square.fill")
-            .scaledFont(size: OmiType.micro, weight: .bold)
-            .foregroundStyle(HomePalette.ink)
-        }
-      }
-      .frame(width: 30, height: 30)
-      .contentShape(Circle())
-    }
-    .buttonStyle(.plain)
-    .disabled(isStopping)
-    .help("Stop")
-    .accessibilityLabel("Stop response")
-  }
-
-  private var connectButton: some View {
-    HomeAskBarConnectButton(isActive: isConnectActive, action: onConnect)
-  }
-}
-
-private enum HomeAskBarActionMode: Equatable {
-  case connect
-  case send
-  case stop
-  case none
-}
-
-struct HomeAskBarConnectButton: View {
-  let isActive: Bool
-  let action: () -> Void
-
-  @State private var isHovering = false
-
-  var body: some View {
-    Button(action: action) {
-      HStack(spacing: OmiSpacing.xs) {
-        Image(systemName: "link")
-          .scaledFont(size: OmiType.caption, weight: .semibold)
-
-        Text("Connect")
-          .scaledFont(size: OmiType.caption, weight: .semibold)
-      }
-      .foregroundStyle(isActive ? Color.black : HomePalette.ink)
-      .padding(.horizontal, OmiSpacing.md)
-      .frame(height: 34)
-      .background(
-        Capsule(style: .continuous)
-          .fill(isActive ? Color.white : Color.white.opacity(isHovering ? 0.14 : 0.07))
-      )
-      .overlay(
-        Capsule(style: .continuous)
-          .stroke(isActive ? Color.clear : HomePalette.hairline, lineWidth: 1)
-      )
-      .contentShape(Capsule())
-    }
-    .buttonStyle(.plain)
-    .onHover { isHovering = $0 }
-    .help("Connect data & use omi anywhere")
-    .accessibilityLabel(isActive ? "Close connect" : "Connect")
-  }
 }
 
 /// One knows-list row: leading kind icon, single-line text, and either a

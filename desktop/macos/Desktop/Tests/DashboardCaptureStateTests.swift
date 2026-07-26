@@ -240,8 +240,8 @@ final class DashboardCaptureStateTests: XCTestCase {
   }
 
   func testConnectorRowsUseStatusConnectionForConnectedState() throws {
-    let destinationSheet = try source(named: "MemoryExportDestinationSheet.swift")
-    let groupedSheet = try source(named: "AgentConnectPickerSheet.swift")
+    let destinationSheet = try source(named: "Pages/MemoryExportDestinationSheet.swift")
+    let groupedSheet = try source(named: "Pages/AgentConnectPickerSheet.swift")
     let rowHelper = try computedPropertyBody(named: "showsConnectedState", in: destinationSheet)
     let singleSheetHelper = try computedPropertyBody(named: "isConnected", in: destinationSheet)
     let optionHelper = try computedPropertyBody(named: "isConnected", in: groupedSheet)
@@ -255,7 +255,7 @@ final class DashboardCaptureStateTests: XCTestCase {
   }
 
   func testGroupedConnectorSetupUsesUserSafeFailureCopy() throws {
-    let source = try source(named: "AgentConnectPickerSheet.swift")
+    let source = try source(named: "Pages/AgentConnectPickerSheet.swift")
 
     XCTAssertTrue(source.contains("resultMessage = .failure(setupFailureMessage(for: error))"))
     XCTAssertFalse(source.contains("resultMessage = .failure(error.localizedDescription)"))
@@ -296,7 +296,7 @@ final class DashboardCaptureStateTests: XCTestCase {
   }
 
   func testConnectorSetupSurfacesDoNotUsePurpleAccents() throws {
-    let memoryExportSheet = try source(named: "MemoryExportDestinationSheet.swift")
+    let memoryExportSheet = try source(named: "Pages/MemoryExportDestinationSheet.swift")
     let apps = try appsSource()
 
     let disallowedColors = [
@@ -409,30 +409,31 @@ final class DashboardCaptureStateTests: XCTestCase {
   }
 
   private func appsSource() throws -> String {
-    try source(named: "AppsPage.swift")
+    try source(named: "Pages/AppsPage.swift")
   }
 
-  // omi-test-quality: source-inspection -- static contract: DismissButton's accessibility label cannot be read back without booting a hosting view
+  /// `DismissButton`'s accessibility label cannot be read back behaviorally:
+  /// SwiftUI does not populate the accessibility tree of a hosting view that
+  /// was never displayed, so an `NSHostingView` mounted in a test reports a
+  /// single childless `AXGroup` and the button is not reachable.
   private func sheetChromeSource() throws -> String {
-    let testsURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-    let chromeURL =
-      testsURL
-      .deletingLastPathComponent()
-      .appendingPathComponent("Sources/MainWindow/Components/SheetChrome.swift")
-    return try String(contentsOf: chromeURL, encoding: .utf8)
+    try source(named: "Components/SheetChrome.swift")
   }
 
   // omi-test-quality: source-inspection -- static contract: the Capture/Listening chips are SwiftUI views whose hover and context-menu wiring cannot be driven without a booted view
   private func homeStatusControlsSource() throws -> String {
-    try source(named: "HomeStatusControls.swift")
+    try source(named: "Pages/HomeStatusControls.swift")
   }
 
-  private func source(named fileName: String) throws -> String {
+  /// `subpath` is relative to `Sources/MainWindow/`. One reader for every
+  /// static contract in this file, so adding another does not add another
+  /// source-inspection site.
+  private func source(named subpath: String) throws -> String {
     let testsURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
     let sourceURL =
       testsURL
       .deletingLastPathComponent()
-      .appendingPathComponent("Sources/MainWindow/Pages/\(fileName)")
+      .appendingPathComponent("Sources/MainWindow/\(subpath)")
     return try String(contentsOf: sourceURL, encoding: .utf8)
   }
 

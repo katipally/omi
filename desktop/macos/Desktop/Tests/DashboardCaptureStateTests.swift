@@ -371,8 +371,11 @@ final class DashboardCaptureStateTests: XCTestCase {
       "Both the bool- and item-driven sheet paths must hoist, or one page shows two modal styles")
 
     // The close control must be a real, labeled button — not a tap gesture.
-    XCTAssertTrue(apps.contains("var accessibilityLabel: String = \"Close\""))
-    XCTAssertTrue(apps.contains(".accessibilityLabel(accessibilityLabel)"))
+    // `DismissButton` now lives with the rest of the sheet chrome, so the
+    // contract is asserted at its owner rather than where it used to sit.
+    let sheetChrome = try sheetChromeSource()
+    XCTAssertTrue(sheetChrome.contains("var accessibilityLabel: String = \"Close\""))
+    XCTAssertTrue(sheetChrome.contains(".accessibilityLabel(accessibilityLabel)"))
   }
 
   private func dashboardSource() throws -> String {
@@ -405,6 +408,16 @@ final class DashboardCaptureStateTests: XCTestCase {
 
   private func appsSource() throws -> String {
     try source(named: "AppsPage.swift")
+  }
+
+  // omi-test-quality: source-inspection -- static contract: DismissButton's accessibility label cannot be read back without booting a hosting view
+  private func sheetChromeSource() throws -> String {
+    let testsURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    let chromeURL =
+      testsURL
+      .deletingLastPathComponent()
+      .appendingPathComponent("Sources/MainWindow/Components/SheetChrome.swift")
+    return try String(contentsOf: chromeURL, encoding: .utf8)
   }
 
   // omi-test-quality: source-inspection -- static contract: the Capture/Listening chips are SwiftUI views whose hover and context-menu wiring cannot be driven without a booted view

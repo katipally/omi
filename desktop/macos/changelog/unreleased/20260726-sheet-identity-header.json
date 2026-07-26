@@ -1,0 +1,3 @@
+{
+  "change": "App detail and persona sheets now open with an identity header (icon, name and actions pinned above the content) instead of an empty band, and short sheets size to what they hold"
+}

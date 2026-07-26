@@ -245,6 +245,11 @@ class AppProvider: ObservableObject {
 
   /// Search apps with current filters
   func searchApps() async {
+    // Any search attempt owns the failure surface, including the early returns
+    // below: a banner from a previous failure surviving a successful search (or
+    // a cleared search box) reads as a live error against fresh results.
+    errorMessage = nil
+
     guard hasActiveFilters else {
       // Reset to default view
       filteredAppsOffset = 0

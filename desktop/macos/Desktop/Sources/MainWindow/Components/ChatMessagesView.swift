@@ -197,6 +197,13 @@ struct ChatMessagesView<WelcomeContent: View>: View {
   /// Bottom inset reserved for a composer that floats over the transcript, so
   /// the last row can still scroll clear of it.
   var bottomContentInset: CGFloat = 0
+  /// Height of the fixed fade band at each end of the transcript. Fixed rather
+  /// than a fraction of the panel: a fraction re-scales every time the panel
+  /// resizes, and the panel resizes whenever the composer grows a line.
+  var transcriptFadeHeight: CGFloat = 0
+  /// Height hidden outright at the foot, for a translucent composer that text
+  /// would otherwise read through.
+  var composerCoverHeight: CGFloat = 0
   @ViewBuilder var welcomeContent: () -> WelcomeContent
 
   /// IDs of messages that duplicate an earlier message in the same session.
@@ -274,9 +281,34 @@ struct ChatMessagesView<WelcomeContent: View>: View {
   var body: some View {
     ScrollViewReader { proxy in
       ZStack(alignment: .bottom) {
+        // The fade masks the transcript only. Masking the whole stack would
+        // take the jump-to-latest chip with it — it sits at the bottom, which
+        // is exactly where the mask goes to zero, so the one affordance for
+        // getting back to the live edge would fade out as it appeared.
         scrollContent(proxy: proxy)
+          .mask(transcriptMask)
         scrollToBottomButton(proxy: proxy)
       }
+    }
+  }
+
+  /// Fixed fade bands plus the region hidden behind a floating composer.
+  /// Without an inset this is a plain rectangle, so surfaces that do not float
+  /// a composer over the transcript are unaffected.
+  @ViewBuilder
+  private var transcriptMask: some View {
+    if transcriptFadeHeight > 0 || bottomContentInset > 0 {
+      VStack(spacing: 0) {
+        LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+          .frame(height: transcriptFadeHeight)
+        Rectangle()
+        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+          .frame(height: transcriptFadeHeight)
+        Color.clear
+          .frame(height: composerCoverHeight)
+      }
+    } else {
+      Rectangle()
     }
   }
 

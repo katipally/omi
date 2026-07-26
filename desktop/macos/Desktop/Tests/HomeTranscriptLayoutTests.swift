@@ -69,13 +69,17 @@ final class HomeTranscriptLayoutTests: XCTestCase {
 
   func testTheTranscriptFadeIsFixedNotFractional() throws {
     // omi-test-quality: source-inspection -- static layout tripwire.
-    let home = try sourceFile("Sources/MainWindow/Pages/DashboardPage.swift")
+    //
+    // The mask lives in ChatMessagesView, not on the caller. Masking the whole
+    // view from outside also masked the jump-to-latest chip, which sits at the
+    // bottom edge where the mask goes to zero — so the one control for getting
+    // back to the live edge faded out exactly as it appeared.
+    let transcript = try sourceFile("Sources/MainWindow/Components/ChatMessagesView.swift")
     let mask = try XCTUnwrap(
-      home.components(separatedBy: "private var homeTranscriptMask").last
+      transcript.components(separatedBy: "private var transcriptMask").last
     )
 
-    XCTAssertTrue(mask.contains("homeTranscriptTopFade"))
-    XCTAssertTrue(mask.contains("homeTranscriptBottomFade"))
+    XCTAssertTrue(mask.contains("transcriptFadeHeight"))
     // A `location:` stop is a fraction of the masked height, which is what made
     // the band breathe as the composer grew.
     XCTAssertFalse(
@@ -84,8 +88,14 @@ final class HomeTranscriptLayoutTests: XCTestCase {
     )
     // Everything below the composer's top edge is masked out, because the
     // composer fill is translucent and text behind it would read through.
-    XCTAssertTrue(mask.contains("Color.clear"))
-    XCTAssertTrue(mask.contains("homeComposerHeight"))
+    XCTAssertTrue(mask.contains("composerCoverHeight"))
+
+    let body = try XCTUnwrap(transcript.components(separatedBy: "var body: some View {").last)
+    let stack = try XCTUnwrap(body.components(separatedBy: "private var transcriptMask").first)
+    XCTAssertTrue(
+      stack.contains("scrollContent(proxy: proxy)\n          .mask(transcriptMask)"),
+      "the mask belongs to the transcript, not to the stack that also holds the jump chip"
+    )
   }
 
   func testTheTranscriptReservesRoomForTheFloatingComposer() throws {

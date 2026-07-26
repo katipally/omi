@@ -1,0 +1,3 @@
+{
+  "change": "Fixed the recording indicator briefly reading paused while the microphone was live, the Connect tray being covered by the composer, the jump-to-latest chip fading out, and the app detail sheet's remove button re-installing instead"
+}

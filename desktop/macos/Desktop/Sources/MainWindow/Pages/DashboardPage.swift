@@ -825,7 +825,11 @@ struct DashboardPage: View {
           homeChatPanel(width: askBarWidth)
             .transition(.homeChatRise)
         case .connect:
+          // The tray hugs its content and cannot scroll, so unlike the
+          // transcript it has no way to move its last rows out from under the
+          // floating composer. It gets the reserved height as real padding.
           homeConnectPanel(stageWidth: stageWidth)
+            .padding(.bottom, homeComposerHeight)
             .transition(.homeDropFromTop)
         case .hub:
           EmptyView()
@@ -1183,10 +1187,11 @@ struct DashboardPage: View {
         trailingContentPadding: 0,
         contentColumnWidth: width,
         bottomContentInset: homeComposerHeight + Self.homeTranscriptBottomFade,
+        transcriptFadeHeight: Self.homeTranscriptTopFade,
+        composerCoverHeight: homeComposerHeight,
         welcomeContent: { dashboardChatWelcome }
       )
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .mask(homeTranscriptMask)
     }
     // Chat is the Home surface itself — no card chrome, it sits directly on the
     // ambient canvas. The scroll view spans the stage so the macOS overlay
@@ -1194,25 +1199,6 @@ struct DashboardPage: View {
     // instead, and still matches the ask bar's width so message edges line up
     // with the bar's.
     .frame(maxWidth: .infinity)
-  }
-
-  /// Fixed fade bands, not fractions of the panel.
-  ///
-  /// Proportional stops re-scale the fade every time the panel resizes, and the
-  /// panel resizes whenever the composer grows a line — so the band visibly
-  /// breathed while typing. The bottom band sits at the composer's top edge and
-  /// everything below it is masked out entirely: the composer is translucent, so
-  /// text left visible behind it would read through the fill.
-  private var homeTranscriptMask: some View {
-    VStack(spacing: 0) {
-      LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-        .frame(height: Self.homeTranscriptTopFade)
-      Rectangle()
-      LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-        .frame(height: Self.homeTranscriptBottomFade)
-      Color.clear
-        .frame(height: homeComposerHeight)
-    }
   }
 
   // MARK: Connect tray

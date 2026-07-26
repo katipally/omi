@@ -2310,6 +2310,20 @@ struct AppDetailSheet: View {
     )
   }
 
+  /// The app as it exists now, not as it was when the sheet opened.
+  ///
+  /// `toggleApp` decides enable-versus-disable from the `enabled` field of the
+  /// value it is handed. Passing the captured `app` means the trash button —
+  /// which is only shown because `isEnabled` resolved true — hands over a value
+  /// that still says false, and re-installs the app it was asked to remove.
+  /// Every action on this sheet goes through here so the label and the action
+  /// read the same state.
+  private var resolvedApp: OmiApp {
+    var resolved = app
+    resolved.enabled = isEnabled
+    return resolved
+  }
+
   /// The primary action the detail-sheet button offers, derived once from the
   /// app's enabled + external-integration state. Single source of truth so the
   /// button's label and its action can never diverge: previously an enabled
@@ -2414,7 +2428,7 @@ struct AppDetailSheet: View {
                       if app.worksExternally {
                         await handleInstall()
                       } else {
-                        await appProvider.toggleApp(app)
+                        await appProvider.toggleApp(resolvedApp)
                       }
                     case .hidden:
                       break
@@ -2452,7 +2466,7 @@ struct AppDetailSheet: View {
               // Disable button shown only when app is enabled
               if isEnabled && !appProvider.isAppLoading(app.id) && !isSettingUp {
                 Button(action: {
-                  Task { await appProvider.toggleApp(app) }
+                  Task { await appProvider.toggleApp(resolvedApp) }
                 }) {
                   Image(systemName: "trash")
                     .scaledFont(size: OmiType.body)

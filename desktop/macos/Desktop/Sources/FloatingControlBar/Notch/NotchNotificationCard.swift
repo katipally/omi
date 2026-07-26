@@ -6,18 +6,23 @@ import SwiftUI
 /// Five variants, all keyed off `assistantId`, so there is exactly one place
 /// that decides what a notification looks like:
 ///
-/// | assistantId      | card            | actions          | dismissal |
-/// |------------------|-----------------|------------------|-----------|
-/// | (anything else)  | bell            | tap to open      | auto, 6s  |
-/// | `task`           | bell            | Execute, X       | auto, 6s  |
-/// | `reach_error`    | warning         | Retry / Skip     | on action |
-/// | `notch_receipt`  | saved-to-tasks  | Review / Undo    | on action |
-/// | `notch_end`      | follow-ups      | Review / Later   | on action |
+/// | assistantId      | card            | actions                  | dismissal |
+/// |------------------|-----------------|--------------------------|-----------|
+/// | (anything else)  | bell            | tap to open              | auto, 6s  |
+/// | `task`           | bell            | Execute, X               | auto, 6s  |
+/// | `reach_error`    | warning         | Retry / Skip             | on action |
+/// | `notch_receipt`  | saved-to-tasks  | Review / Undo / Dismiss  | on action |
+/// | `notch_end`      | follow-ups      | Review / Later           | on action |
 ///
 /// Every variant lays out its actions as a row in the flow. The card reports its
 /// intrinsic height to the panel, so a variant that overlaid its buttons would
 /// be measuring a box the buttons are not inside — and any copy long enough to
 /// reach them would run underneath.
+///
+/// The right-hand control of every card that does not time out is the neutral
+/// exit: it ends the card and takes no action at all. Its label comes from
+/// `FloatingBarNotification.neutralDismissLabel`, so the rule that a persistent
+/// card must have one is answered about the control the user can actually see.
 struct NotchNotificationCard: View {
   let notification: FloatingBarNotification
 
@@ -34,6 +39,13 @@ struct NotchNotificationCard: View {
   }
 
   private var isTask: Bool { notification.assistantId == "task" }
+
+  /// The copy on this variant's neutral exit, or nil where the exit is the
+  /// dismiss glyph. Read straight from the shared rule rather than written into
+  /// each variant, so deleting the rule deletes the control with it.
+  private var neutralExitLabel: String? {
+    FloatingBarNotification.neutralDismissLabel(assistantId: notification.assistantId)
+  }
 
   /// The full notification, untruncated, for assistive technology.
   private var spokenSummary: String {
@@ -231,13 +243,17 @@ struct NotchNotificationCard: View {
         .buttonStyle(NotchCardControlStyle())
         .help("Run the request again")
 
-        Button {
-          FloatingControlBarManager.shared.dismissReachError()
-        } label: {
-          quietLabel("Skip")
+        if let exit = neutralExitLabel {
+          Button {
+            // Not the plain dismissal: giving up on the request is what
+            // releases the retry closure the card was holding.
+            FloatingControlBarManager.shared.dismissReachError()
+          } label: {
+            quietLabel(exit)
+          }
+          .buttonStyle(NotchCardControlStyle())
+          .help("Give up on this request")
         }
-        .buttonStyle(NotchCardControlStyle())
-        .help("Give up on this request")
       }
     }
     .padding(OmiSpacing.md)
@@ -246,10 +262,11 @@ struct NotchNotificationCard: View {
 
   // MARK: - Task receipt
 
-  /// Durable receipt — "Saved to Tasks — <task>" with Review and Undo, posted
-  /// only after Omi can read the task back through the canonical action-items
-  /// path. Monochrome; the save already happened, so this is a report, not an
-  /// alert.
+  /// Durable receipt — "Saved to Tasks — <task>", posted only after Omi can read
+  /// the task back through the canonical action-items path. Monochrome; the save
+  /// already happened, so this is a report, not an alert — which is exactly why
+  /// its third control has to exist. Review navigates away and Undo destroys the
+  /// task; "seen it" was left with nothing to press.
   private var receiptCard: some View {
     HStack(alignment: .center, spacing: OmiSpacing.sm) {
       Text(notification.title)
@@ -279,6 +296,16 @@ struct NotchNotificationCard: View {
         }
         .buttonStyle(NotchCardControlStyle())
         .help("Remove the task that was just saved")
+
+        if let exit = neutralExitLabel {
+          Button {
+            FloatingControlBarManager.shared.dismissCurrentNotification()
+          } label: {
+            linkLabel(exit, ink: mutedInk)
+          }
+          .buttonStyle(NotchCardControlStyle())
+          .help("Keep the task and put the receipt away")
+        }
       }
     }
     .padding(.horizontal, OmiSpacing.md)
@@ -326,13 +353,15 @@ struct NotchNotificationCard: View {
         .buttonStyle(NotchCardControlStyle())
         .help("Open the follow-ups this conversation left behind")
 
-        Button {
-          FloatingControlBarManager.shared.dismissCurrentNotification()
-        } label: {
-          quietLabel("Later")
+        if let exit = neutralExitLabel {
+          Button {
+            FloatingControlBarManager.shared.dismissCurrentNotification()
+          } label: {
+            quietLabel(exit)
+          }
+          .buttonStyle(NotchCardControlStyle())
+          .help("Dismiss without opening the follow-ups")
         }
-        .buttonStyle(NotchCardControlStyle())
-        .help("Dismiss without opening the follow-ups")
       }
       .padding(.top, OmiSpacing.xxs)
     }

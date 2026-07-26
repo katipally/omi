@@ -25,15 +25,14 @@ struct NotchView: View {
 
   /// The status line the ladder derives from: the reducer's PTT banner, falling
   /// back to the one-shot transient hint for states the reducer does not own.
-  private var hintText: String {
-    barState.pttHintText.isEmpty ? barState.transientHintText : barState.pttHintText
-  }
+  private var hintText: String { barState.notchHintText }
 
   /// Single value that both the panel size and the rendered content derive
   /// from. Priority:
-  /// listening > thinking > responding > hint > notification > idle.
+  /// listening > thinking > responding > hint > notification > idle, with a
+  /// finished reply holding `.responding` for as long as it lingers.
   private var presentation: NotchPresentation {
-    let base = NotchPresentation.derive(
+    NotchPresentation.resolve(
       // The RAW listening phase. `isVoiceListening` folds the hint in, so
       // deriving from it makes every PTT error render as "Listening...".
       isListening: barState.isListeningPhase,
@@ -41,19 +40,13 @@ struct NotchView: View {
       isResponding: barState.isVoiceResponseActive,
       hintText: hintText,
       notificationID: barState.currentNotification?.id,
-      isVoiceDisplay: isVoiceDisplay
+      isVoiceDisplay: isVoiceDisplay,
+      // heldReply is set while the response streams, so this is already true
+      // the instant the response goes inactive — the notch never collapses to
+      // idle first. Gated on the same display, or the reply would linger on
+      // every screen.
+      isLingeringReply: vm.isLingeringReply
     )
-    // A finished reply lingers for a few seconds after the turn ends. heldReply
-    // is set while the response streams, so this is already true the instant
-    // the response goes inactive — the notch never collapses to idle first.
-    // Gated on the same display, or the reply would linger on every screen.
-    if vm.isLingeringReply, isVoiceDisplay {
-      switch base {
-      case .idle, .notification: return .responding
-      default: return base
-      }
-    }
-    return base
   }
 
   // MARK: - Animations (two isolated timelines)

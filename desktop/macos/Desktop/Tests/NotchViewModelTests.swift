@@ -4,22 +4,25 @@ import XCTest
 @testable import Omi_Computer
 
 /// Hand-cranked stand-in for the linger's wall clock. A hold parks until the
-/// test releases it and observes cancellation the way `Task.sleep` does, which
-/// is the behaviour `keepReply` relies on. No wall-clock time is ever spent, so
-/// the state machine is exercised at exactly the transitions that matter.
+/// test advances past it and observes cancellation the way `Task.sleep` does,
+/// which is the behaviour the pause relies on. No wall-clock time is ever spent,
+/// so the state machine is exercised at exactly the transitions that matter.
 /// Pinned to the main actor so a hold, its release and the assertions that read
 /// them all run on one executor — the ordering the test depends on is then a
 /// property of the isolation, not of how the scheduler happened to interleave.
 @MainActor
 private final class LingerClock {
   private(set) var holds: [TimeInterval] = []
-  private var isReleased = false
+  private var elapsed: TimeInterval?
 
-  func release() { isReleased = true }
+  /// Advance far enough to elapse every hold no longer than `seconds`. A hold
+  /// longer than that keeps parking, which is what lets a test tell the short
+  /// countdown apart from the ceiling that replaced it.
+  func release(upTo seconds: TimeInterval = .infinity) { elapsed = seconds }
 
   func hold(_ seconds: TimeInterval) async {
     holds.append(seconds)
-    while !isReleased, !Task.isCancelled {
+    while !Task.isCancelled, seconds > (elapsed ?? -1) {
       await Task.yield()
     }
   }
@@ -262,16 +265,68 @@ final class NotchViewModelTests: XCTestCase {
     vm.beginReplyDismiss(hold: 5)
     await settle()
     vm.keepReply()
-    clock.release()
+    clock.release(upTo: 5)
     await settle()
 
-    XCTAssertFalse(vm.replyDismissed, "a cancelled hold must not dismiss the reply")
+    XCTAssertFalse(vm.replyDismissed, "the paused reply must outlive the countdown it replaced")
 
     vm.resumeReplyDismiss(hold: 2.5)
     await settle()
 
-    XCTAssertEqual(clock.holds, [5, 2.5])
+    XCTAssertEqual(clock.holds, [5, NotchViewModel.heldReplyMaxHold, 2.5])
     XCTAssertTrue(vm.replyDismissed, "the resumed hold was already released")
+  }
+
+  /// The pause is a ceiling, not a cancellation. The pointer can leave without
+  /// the notch ever hearing about it — the panel is ordered out, the display
+  /// goes away, the app is hidden — and a reply held open by a resume that never
+  /// arrives would sit on the user's screen until the next voice turn.
+  func testAPausedReplyStillEndsWhenTheResumeNeverArrives() async {
+    let clock = LingerClock()
+    let vm = makeViewModel(sleep: { [clock] in await clock.hold($0) })
+    vm.noteReply("Here is the answer")
+    vm.beginReplyDismiss(hold: 5)
+    await settle()
+
+    vm.keepReply()
+    await settle()
+
+    XCTAssertEqual(clock.holds, [5, NotchViewModel.heldReplyMaxHold])
+    clock.release(upTo: 5)
+    await settle()
+    XCTAssertTrue(vm.isLingeringReply, "the ceiling has to outlast a long read, not cut it short")
+
+    clock.release(upTo: NotchViewModel.heldReplyMaxHold)
+    await settle()
+
+    XCTAssertTrue(vm.replyDismissed)
+    XCTAssertFalse(vm.isLingeringReply)
+  }
+
+  /// The same missing state, in the other direction: a turn that ends while the
+  /// pointer is already resting on the notch used to start the short countdown
+  /// anyway and pull the reply out from under someone reading it.
+  func testAReplyThatFinishesUnderThePointerTakesTheCeilingNotTheShortHold() async {
+    let clock = LingerClock()
+    let vm = makeViewModel(sleep: { [clock] in await clock.hold($0) })
+
+    vm.keepReply()
+    vm.noteReply("Here is the answer")
+    vm.beginReplyDismiss(hold: 5)
+    await settle()
+
+    XCTAssertEqual(clock.holds, [NotchViewModel.heldReplyMaxHold])
+
+    clock.release(upTo: 5)
+    await settle()
+    XCTAssertFalse(vm.replyDismissed)
+
+    // And the pointer leaving still hands it back to the short grace.
+    vm.resumeReplyDismiss(hold: 2.5)
+    await settle()
+
+    XCTAssertEqual(clock.holds, [NotchViewModel.heldReplyMaxHold, 2.5])
+    XCTAssertTrue(vm.replyDismissed)
   }
 
   func testEscDismissesImmediatelyWithoutWaitingOutTheHold() async {

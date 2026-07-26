@@ -199,14 +199,41 @@ struct FloatingBarNotification: Identifiable, Equatable {
     self.screenshotData = screenshotData
   }
 
+  /// The cards that need a decision from the user. One list, read by two rules:
+  /// these are the cards that stay until they get their decision, and they are
+  /// therefore exactly the cards that have to offer a way out that decides
+  /// nothing.
+  static let persistentAssistantIds: [String] = [
+    "reach_error", NotchMoment.receiptAssistantId, NotchMoment.endAssistantId,
+  ]
+
   /// Cards that need a decision from the user stay until they get one; the rest
   /// time out. Keyed on the same `assistantId` the notch card switches on, so a
   /// variant can never render an action pair that silently disappears.
   var autoDismisses: Bool {
+    !Self.persistentAssistantIds.contains(assistantId)
+  }
+
+  /// The written control that ends the card and does nothing else — nothing
+  /// opened, retried, undone, or deleted. `NotchNotificationCard` renders this
+  /// text, so the card cannot disagree with the rule below about whether the
+  /// exit is on screen. nil for the proactive card, which carries the dismiss
+  /// glyph in its action well instead.
+  static func neutralDismissLabel(assistantId: String) -> String? {
     switch assistantId {
-    case "reach_error", NotchMoment.receiptAssistantId, NotchMoment.endAssistantId: return false
-    default: return true
+    case "reach_error": return "Skip"
+    case NotchMoment.receiptAssistantId: return "Dismiss"
+    case NotchMoment.endAssistantId: return "Later"
+    default: return nil
     }
+  }
+
+  /// Whether the card offers a neutral exit at all. A card that never times out
+  /// has to spell one out; every other card is the proactive one, whose glyph
+  /// is always there.
+  static func hasNeutralDismiss(assistantId: String) -> Bool {
+    if neutralDismissLabel(assistantId: assistantId) != nil { return true }
+    return !persistentAssistantIds.contains(assistantId)
   }
 
   static func == (lhs: FloatingBarNotification, rhs: FloatingBarNotification) -> Bool {
@@ -419,6 +446,14 @@ class FloatingControlBarState: NSObject, ObservableObject {
   /// hint is empty.
   @Published private(set) var transientHintText: String = ""
   private var transientHintClearTask: Task<Void, Never>?
+
+  /// The status line the notch's ladder reads: the reducer's banner, falling
+  /// back to the transient hint for states the reducer does not own. One fold,
+  /// so the panel and the manager that decides what a click off it means cannot
+  /// disagree about whether a hint is showing.
+  var notchHintText: String {
+    pttHintText.isEmpty ? transientHintText : pttHintText
+  }
 
   /// The retired transient-hint channel. Nothing in Sources or Tests calls it,
   /// so `transientHintText` never leaves its empty initial value and the notch's

@@ -224,20 +224,35 @@ final class NotchViewModel: ObservableObject {
     if !text.isEmpty { heldReply = text }
   }
 
+  /// The ceiling on a linger the pointer is holding open. Generous on purpose:
+  /// anything short would yank a long reply away from someone still reading it,
+  /// and the only thing this has to prevent is a reply that never leaves.
+  static let heldReplyMaxHold: TimeInterval = 30
+
+  /// Whether the pointer is resting on the panel. Both directions of the
+  /// dismissal read it — a linger that begins under the pointer takes the
+  /// ceiling instead of the short hold, and a pointer arriving mid-linger
+  /// replaces the countdown with the ceiling instead of cancelling it — so a
+  /// resume that never arrives cannot strand the reply on screen.
+  private var isPointerHolding = false
+
   /// Start the dismissal countdown once the turn has ended.
   func beginReplyDismiss(hold: TimeInterval = 5) {
     guard isLingeringReply else { return }
-    scheduleReplyDismiss(after: hold)
+    scheduleReplyDismiss(after: isPointerHolding ? Self.heldReplyMaxHold : hold)
   }
 
-  /// Pause the dismiss while the pointer is on the notch.
+  /// Hold the reply while the pointer is on the notch, bounded by the ceiling.
   func keepReply() {
-    lingerTask?.cancel()
+    isPointerHolding = true
+    guard isLingeringReply else { return }
+    scheduleReplyDismiss(after: Self.heldReplyMaxHold)
   }
 
   /// Resume the dismiss after the pointer leaves, on a shorter grace than the
   /// initial hold — the reply has already had its read time.
   func resumeReplyDismiss(hold: TimeInterval = 2.5) {
+    isPointerHolding = false
     guard isLingeringReply else { return }
     scheduleReplyDismiss(after: hold)
   }

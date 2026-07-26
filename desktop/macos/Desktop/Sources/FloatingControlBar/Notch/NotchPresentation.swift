@@ -69,4 +69,67 @@ enum NotchPresentation: Equatable {
     if let notificationID { return .notification(notificationID) }
     return .idle
   }
+
+  /// `derive` plus the linger overlay: a finished reply still on screen holds
+  /// the panel in `.responding` rather than letting it fall through to idle or
+  /// to a card queued behind it. This is the whole ladder, so the view that
+  /// renders a panel and the manager that decides what a click off it means are
+  /// reading one answer rather than two that can drift apart.
+  static func resolve(
+    isListening: Bool,
+    isThinking: Bool,
+    isResponding: Bool,
+    hintText: String,
+    notificationID: UUID?,
+    isVoiceDisplay: Bool,
+    isLingeringReply: Bool
+  ) -> NotchPresentation {
+    let base = derive(
+      isListening: isListening,
+      isThinking: isThinking,
+      isResponding: isResponding,
+      hintText: hintText,
+      notificationID: notificationID,
+      isVoiceDisplay: isVoiceDisplay
+    )
+    guard isLingeringReply, isVoiceDisplay else { return base }
+    switch base {
+    case .idle, .notification: return .responding
+    default: return base
+    }
+  }
+
+  /// What a click somewhere off the notch does to what is currently on screen.
+  ///
+  /// A live voice turn is never dismissible: killing a hold, the wait, or a
+  /// reply that is still arriving because the pointer landed somewhere else is
+  /// worse than any amount of clutter. What a click can put away is a surface
+  /// that is only waiting to be read — a finished reply lingering, or a card.
+  ///
+  /// `isVoiceTurnActive` is the whole difference between the two `.responding`
+  /// cases: the same presentation covers the reply as it streams and the reply
+  /// once it has finished.
+  func outsideClickOutcome(isVoiceTurnActive: Bool) -> NotchOutsideClickOutcome {
+    switch self {
+    case .listening, .thinking: return .ignored
+    case .responding: return isVoiceTurnActive ? .ignored : .lingeringReply
+    case .notification: return .notification
+    case .hint, .idle: return .ignored
+    }
+  }
+}
+
+/// The outcome of a click off the notch. Deliberately not a Bool: every case
+/// that can be dismissed is dismissed differently, and keeping the choice in one
+/// value is what stops the policy from being half in a predicate and half in the
+/// caller's switch.
+enum NotchOutsideClickOutcome: Equatable {
+  /// Nothing on this panel answers to an outside click.
+  case ignored
+  /// A finished reply that is only waiting to be read.
+  case lingeringReply
+  /// A notification card. Dismissed and NOTHING else: nothing retried, undone,
+  /// or deleted, whatever the card's own buttons offer. A card queued behind it
+  /// takes its place, exactly as it would if the card had timed out.
+  case notification
 }

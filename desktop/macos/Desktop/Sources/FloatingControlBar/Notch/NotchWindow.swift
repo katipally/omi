@@ -60,6 +60,10 @@ final class NotchWindow: NSPanel {
     registerMenuTrackingObservers()
   }
 
+  /// Whether an in-process menu is tracking. The notifications behind it are
+  /// app-wide, so every panel answers this identically — ask any one of them.
+  var isMenuTracking: Bool { menuTrackingDepth > 0 }
+
   func setYieldsToSystemDialog(_ yields: Bool) {
     yieldsToSystemDialog = yields
     applySurfaceLevel()

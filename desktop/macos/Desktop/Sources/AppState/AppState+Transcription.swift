@@ -503,19 +503,11 @@ extension AppState {
     // Only during meetings → capture (mic + system) only while in a call. Always/Never → the mic
     // runs continuously (system audio still respects the mode below).
     let shouldCapture = mode != .onlyDuringMeetings || meetingActive
-
+    // Set past this guard, never before: the early return skips the mic block.
     guard meetingStateReady else {
-      // Publishing "awaiting a meeting" here would describe a decision this
-      // path has not made: the detector's first probe runs detached and can be
-      // starved by app-activation ticks, and the microphone block below never
-      // runs, so the mic keeps capturing. A recording indicator that reads
-      // paused while the mic is live is the one direction that must not happen,
-      // so the flag keeps its last reconciled value until the mic actually
-      // follows it.
       log("Transcription: waiting for meeting detector before changing capture state")
       return
     }
-
     isAwaitingMeeting = mode == .onlyDuringMeetings && !meetingActive
 
     captureGateInFlight = true

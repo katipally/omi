@@ -29,9 +29,23 @@ struct MemoryHubPage: View {
   /// which lands outside the `withAnimation` transaction — the selected capsule
   /// jumps instead of sliding. Local state animates; the mirror below persists.
   @State private var selection = MemoryHubDestination.persisted.rawValue
+  @ObservedObject private var conversationDetailState = ConversationDetailAutomationState.shared
 
   private var destination: MemoryHubDestination {
     MemoryHubDestination(rawValue: selection) ?? .memories
+  }
+
+  /// Memories follows the same readable-column policy as Conversations, and
+  /// yields the cap for the same reason: a linked conversation's transcript
+  /// drawer needs the width. Sharing `MemoryHubLayoutPolicy` is what keeps the
+  /// two sections the same shape instead of one column being narrower than its
+  /// neighbour for no reason the user can see.
+  private var memoriesUsesAvailableWidth: Bool {
+    MemoryHubLayoutPolicy.usesAvailableWidth(
+      conversationID: viewModelContainer.memoriesViewModel.linkedConversation?.id,
+      presentedConversationID: conversationDetailState.openConversationId,
+      transcriptDrawerOpen: conversationDetailState.transcriptDrawerOpen
+    )
   }
 
   var body: some View {
@@ -58,6 +72,11 @@ struct MemoryHubPage: View {
             viewModel: viewModelContainer.memoriesViewModel,
             graphViewModel: viewModelContainer.memoryGraphViewModel
           )
+          .frame(
+            maxWidth: memoriesUsesAvailableWidth ? .infinity : MemoryHubLayoutPolicy.readableContentWidth,
+            maxHeight: .infinity
+          )
+          .animation(OmiMotion.gated(.easeInOut(duration: 0.22)), value: memoriesUsesAvailableWidth)
         case .conversations:
           ConversationsPageHost(appState: appState)
         case .brainMap:

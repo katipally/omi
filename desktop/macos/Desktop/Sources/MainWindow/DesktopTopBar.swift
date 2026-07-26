@@ -8,6 +8,7 @@ import SwiftUI
 /// and the Capture/Listening controls on the right.
 struct DesktopTopBar: View {
   @Binding var selectedIndex: Int
+  @Binding var memoryDestinationRawValue: Int
   @ObservedObject var appState: AppState
   @ObservedObject var memoriesViewModel: MemoriesViewModel
   @ObservedObject var tasksStore: TasksStore
@@ -138,7 +139,8 @@ struct DesktopTopBar: View {
           navLabel(for: item)
         }
         .buttonStyle(.plain)
-        .help(item.title)
+        .help(helpTitle(for: item))
+        .accessibilityIdentifier(navIdentifier(for: item))
         .onHover { hovering in
           OmiMotion.withGated(OmiSegmentedMetrics.hoverAnimation) {
             hoveredIndex = hovering ? item.index : (hoveredIndex == item.index ? nil : hoveredIndex)
@@ -147,6 +149,26 @@ struct DesktopTopBar: View {
       }
     }
     .omiSegmentedTrack()
+  }
+
+  /// The Memory hub's current section, owned by the shell. The bar reads it but
+  /// never switches it: the hub's own segmented control is the single switcher.
+  private var memoryDestination: MemoryHubDestination {
+    MemoryHubDestination(rawValue: memoryDestinationRawValue) ?? .memories
+  }
+
+  /// Memory names the section it lands on, so the segment still discloses where
+  /// the click goes without offering a second destination switcher.
+  private func helpTitle(for item: NavItem) -> String {
+    guard item.index == SidebarNavItem.conversations.rawValue else { return item.title }
+    return "\(item.title): \(memoryDestination.title)"
+  }
+
+  /// Stable automation handles for the nav. Memory keeps the identifier the
+  /// dropdown-era pill used so automation targeting it still finds the segment.
+  private func navIdentifier(for item: NavItem) -> String {
+    item.index == SidebarNavItem.conversations.rawValue
+      ? "memory-navigation-button" : "\(item.title.lowercased())-navigation-button"
   }
 
   private func navLabel(for item: NavItem) -> some View {
@@ -215,5 +237,120 @@ private struct WindowDragArea: NSViewRepresentable {
 
   private final class DragView: NSView {
     override var mouseDownCanMoveWindow: Bool { true }
+  }
+}
+
+// MARK: - Retired pill navigation
+
+/// The pill-per-tab top navigation, and the hover dropdown that used to hang off
+/// the Memory pill. Nothing constructs these since the nav became one segmented
+/// track and the Memory hub's own switcher became the single destination
+/// control; they stay in-tree so their removal can be its own reviewable
+/// change. `TopNavigationPillMetrics` is still the source of truth for the pill
+/// widths their tests assert.
+enum TopNavigationPillMetrics {
+  static let itemSpacing: CGFloat = 4
+  static let horizontalPadding: CGFloat = 12
+  static let height: CGFloat = 30
+  static let iconWidth: CGFloat = 18
+  static let badgeWidth: CGFloat = 38
+
+  static func width(for itemIndex: Int, badgeCount: Int = 0) -> CGFloat {
+    let baseWidth: CGFloat
+    switch itemIndex {
+    case SidebarNavItem.dashboard.rawValue:
+      baseWidth = 88
+    case SidebarNavItem.conversations.rawValue:
+      baseWidth = 128
+    case SidebarNavItem.tasks.rawValue:
+      baseWidth = 84
+    case SidebarNavItem.apps.rawValue:
+      baseWidth = 80
+    default:
+      baseWidth = 88
+    }
+    return baseWidth + (badgeCount > 0 ? badgeWidth : 0)
+  }
+}
+
+private struct TopNavigationPill: View {
+  let icon: String
+  let title: String
+  let badgeCount: Int
+  let isSelected: Bool
+  let width: CGFloat
+  @State private var isHovering = false
+
+  var body: some View {
+    HStack(spacing: 6) {
+      Image(systemName: icon)
+        .scaledFont(size: OmiType.caption, weight: .semibold)
+        .frame(width: TopNavigationPillMetrics.iconWidth)
+      Text(title)
+        .scaledFont(size: OmiType.caption, weight: .semibold)
+      if badgeCount > 0 {
+        Text("+\(badgeCount)")
+          .scaledFont(size: OmiType.micro, weight: .bold)
+          .foregroundColor(OmiColors.textPrimary)
+          .padding(.horizontal, 5)
+          .padding(.vertical, 1)
+          .background(Capsule(style: .continuous).fill(OmiColors.textPrimary.opacity(0.16)))
+      }
+    }
+    .foregroundStyle(isSelected || isHovering ? OmiColors.textPrimary : OmiColors.textTertiary)
+    .padding(.horizontal, TopNavigationPillMetrics.horizontalPadding)
+    .frame(width: width, height: TopNavigationPillMetrics.height)
+    .background(
+      Capsule(style: .continuous)
+        .fill(
+          isSelected
+            ? OmiColors.textPrimary.opacity(0.10)
+            : isHovering ? OmiColors.textPrimary.opacity(0.06) : Color.clear
+        )
+    )
+    .contentShape(Capsule())
+    .onHover { isHovering = $0 }
+  }
+}
+
+private struct MemoryDropdownRow: View {
+  let destination: MemoryHubDestination
+  let isSelected: Bool
+  let width: CGFloat
+  let onSelect: () -> Void
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: onSelect) {
+      HStack(spacing: 6) {
+        Image(systemName: destination.icon)
+          .scaledFont(size: OmiType.caption, weight: .semibold)
+          .frame(width: TopNavigationPillMetrics.iconWidth)
+        Text(destination.title)
+          .scaledFont(size: OmiType.caption, weight: .semibold)
+      }
+      .foregroundStyle(
+        isSelected || isHovering ? OmiColors.textPrimary : OmiColors.textSecondary
+      )
+      .padding(.horizontal, TopNavigationPillMetrics.horizontalPadding)
+      .frame(width: width, height: TopNavigationPillMetrics.height)
+      .background(
+        Capsule(style: .continuous)
+          .fill(
+            isSelected
+              ? OmiColors.backgroundTertiary
+              : isHovering ? OmiColors.backgroundTertiary : OmiColors.backgroundSecondary
+          )
+      )
+      .overlay(
+        Capsule(style: .continuous)
+          .stroke(OmiColors.border.opacity(0.55), lineWidth: 1)
+      )
+      .shadow(color: Color.black.opacity(0.24), radius: 8, y: 3)
+      .contentShape(Capsule())
+    }
+    .buttonStyle(.plain)
+    .onHover { isHovering = $0 }
+    .accessibilityIdentifier("memory-destination-\(destination.rawValue)")
   }
 }

@@ -16,6 +16,14 @@ enum AgentLifecycleDisplayProjection {
   }
 
   static func project(_ canonicalMessages: [ChatMessage]) -> [ChatMessage] {
+    // A transcript with no lifecycle receipt projects to itself. The transcript
+    // view re-derives this on every frame of a streaming reply, so the ordinary
+    // case must not rebuild the whole message array to discover it changed
+    // nothing.
+    guard canonicalMessages.contains(where: hasLifecycleReceipt) else {
+      return canonicalMessages
+    }
+
     var spawnByRunID: [String: Location] = [:]
     var spawnByPillID: [UUID: Location] = [:]
 
@@ -146,6 +154,15 @@ enum AgentLifecycleDisplayProjection {
       return lhsRunID == rhsRunID
     }
     return lhsPillID != nil && lhsPillID == rhsPillID
+  }
+
+  private static func hasLifecycleReceipt(_ message: ChatMessage) -> Bool {
+    message.contentBlocks.contains { block in
+      switch block {
+      case .agentSpawn, .agentCompletion: return true
+      default: return false
+      }
+    }
   }
 
   private static func nonEmpty(_ value: String?) -> String? {

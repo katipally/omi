@@ -24,6 +24,10 @@ enum ChatMessageDeduplicator {
     var seen: [String: String] = [:]  // sender+full-text fingerprint → first message ID
     var dupes = Set<String>()
     for msg in messages {
+      // A live reply passes through every prefix of its final text, so any
+      // fingerprint taken mid-stream describes a message that does not exist
+      // yet. Only settled rows can be duplicates of one another.
+      guard !msg.isStreaming else { continue }
       guard msg.text.count > 200 else { continue }  // only dedup long messages
       let fingerprint = "\(msg.sender)\u{1}\(msg.text)"
       if seen[fingerprint] != nil {
@@ -33,6 +37,84 @@ enum ChatMessageDeduplicator {
       }
     }
     return dupes
+  }
+}
+
+/// Vertical rhythm for the transcript. A flat gap between every row makes a
+/// question and its answer look as unrelated as two separate exchanges, so the
+/// gap that opens a turn is wider than the gaps inside one.
+enum ChatTurnSpacing {
+  static let withinTurn: CGFloat = 12
+  static let betweenTurns: CGFloat = 32
+
+  /// Gap above `current`, given the sender of the row before it. A user
+  /// message that follows omi opens a new turn; everything else continues the
+  /// turn already in progress. The first row of a transcript gets no gap.
+  static func leadingGap(previous: ChatSender?, current: ChatSender) -> CGFloat {
+    guard let previous else { return 0 }
+    return current == .user && previous != .user ? betweenTurns : withinTurn
+  }
+}
+
+/// Timing for following a streaming reply.
+///
+/// The follow itself is `ChatLiveEdgeFollower`, which integrates the scroll
+/// offset toward the live edge every display frame. These are the surrounding
+/// timings: when it runs, and what the *other* scroll paths do.
+enum ChatStreamScroll {
+  /// Coalescing window for content that is not a paced reveal — a tool card
+  /// landing, an attachment strip appearing. Those add their height in one
+  /// step, so they get a short commanded move rather than a jump.
+  static let throttle: TimeInterval = 0.08
+  static let animation: Animation = .easeOut(duration: 0.18)
+
+  /// How long the follow keeps running after the stream ends. The reveal is
+  /// paced on its own clock (`ChatRevealModel`), so the transcript is still
+  /// growing for a beat after the last token lands; stopping the follow with
+  /// the stream would strand that tail below the fold.
+  static let settleTail: TimeInterval = 1.5
+}
+
+/// The motion a sent message makes on its way into the transcript.
+///
+/// The composer sits immediately below the transcript, so a user row that
+/// starts a row's height lower and settles upward reads as the text leaving the
+/// bar it was typed in. It is the same illusion iMessage uses: nothing actually
+/// travels from the field, the bubble simply arrives from where the field is.
+enum ChatSendMotion {
+  static let riseDistance: CGFloat = 52
+  static let enteringScale: CGFloat = 0.94
+  static let insert: Animation = .spring(response: 0.38, dampingFraction: 0.8)
+}
+
+private struct ChatSendRiseModifier: ViewModifier {
+  let offsetY: CGFloat
+  let scale: CGFloat
+  let opacity: Double
+
+  func body(content: Content) -> some View {
+    content
+      .offset(y: offsetY)
+      .scaleEffect(scale, anchor: .bottomTrailing)
+      .opacity(opacity)
+  }
+}
+
+extension AnyTransition {
+  /// Insertion only. A removal that flew back down would animate history
+  /// pruning and conversation switches, which are not sends.
+  static var chatSendRise: AnyTransition {
+    .asymmetric(
+      insertion: .modifier(
+        active: ChatSendRiseModifier(
+          offsetY: ChatSendMotion.riseDistance,
+          scale: ChatSendMotion.enteringScale,
+          opacity: 0
+        ),
+        identity: ChatSendRiseModifier(offsetY: 0, scale: 1, opacity: 1)
+      ),
+      removal: .opacity
+    )
   }
 }
 
@@ -100,11 +182,13 @@ struct ChatMessagesView<WelcomeContent: View>: View {
   var trailingContentPadding: CGFloat = 0
   @ViewBuilder var welcomeContent: () -> WelcomeContent
 
-  /// IDs of messages that are near-duplicates of an earlier message in the same session.
-  /// Computed once per messages change to avoid O(n^2) per render.
-  private var duplicateMessageIds: Set<String> {
-    ChatMessageDeduplicator.duplicateIDs(in: messages)
-  }
+  /// IDs of messages that duplicate an earlier message in the same session.
+  ///
+  /// Held in state rather than recomputed in `body`. The fingerprint copies the
+  /// full text of every long message, and `body` re-evaluates on every frame of
+  /// a paced reveal — deriving this inline made the transcript pay for its own
+  /// whole history 30 times a second while omi was answering.
+  @State private var duplicateMessageIds: Set<String> = []
 
   // MARK: - Scroll State
 
@@ -160,6 +244,14 @@ struct ChatMessagesView<WelcomeContent: View>: View {
   /// Used to detect conversation switches so session-scoped @State can be reset.
   @State private var trackedConversationId: String?
 
+  /// Armed once this transcript has made its first placement. Until then rows
+  /// are history being restored, not messages arriving.
+  @State private var animatesInsertions = false
+
+  /// Whether the damped live-edge follow is running. Held separately from
+  /// `isStreamingReply` because the paced reveal outlives the last token.
+  @State private var isFollowingLiveEdge = false
+
   var body: some View {
     ScrollViewReader { proxy in
       ZStack(alignment: .bottom) {
@@ -172,10 +264,21 @@ struct ChatMessagesView<WelcomeContent: View>: View {
   @ViewBuilder
   private func scrollContent(proxy: ScrollViewProxy) -> some View {
     ScrollView {
-      LazyVStack(spacing: OmiSpacing.lg) {
+      // Row gaps come from `ChatTurnSpacing` per message, not from the stack:
+      // a single stack spacing cannot tell "omi answering you" from "a new
+      // question starting".
+      LazyVStack(spacing: 0) {
         loadMoreButton
         messageContent
+        workingIndicator
       }
+      // Only a row arriving on a settled transcript animates. A history load
+      // populates dozens at once, and springing all of them would turn opening
+      // a conversation into a shuffle.
+      .animation(
+        animatesInsertions ? OmiMotion.gated(ChatSendMotion.insert) : nil,
+        value: messages.count
+      )
       .padding(.horizontal, horizontalContentPadding)
       .padding(.trailing, trailingContentPadding)
       .padding(.vertical, verticalContentPadding)
@@ -196,7 +299,14 @@ struct ChatMessagesView<WelcomeContent: View>: View {
     }
     // MARK: - React to message count changes
     .onChange(of: messages.count) { oldCount, newCount in
+      duplicateMessageIds = ChatMessageDeduplicator.duplicateIDs(in: messages)
       handleMessagesCountChange(oldCount: oldCount, newCount: newCount, proxy: proxy)
+    }
+    // A reply can only duplicate an earlier one once it has settled, so the
+    // other half of the dedup input is the stream ending.
+    .onChange(of: isStreamingReply) { _, isStreaming in
+      guard !isStreaming else { return }
+      duplicateMessageIds = ChatMessageDeduplicator.duplicateIDs(in: messages)
     }
     // A journal restore may be populated by background events while the
     // loader is still collecting its canonical snapshot. Reveal it only after
@@ -254,6 +364,7 @@ struct ChatMessagesView<WelcomeContent: View>: View {
       trackedConversationId = transition.newTracked
       if transition.shouldReset {
         initialRestoreHandled = false
+        animatesInsertions = false
         lastSeenSendGeneration = localSendToken?.generation ?? 0
         prependAnchorId = nil
         hasActivityBelow = false
@@ -262,7 +373,23 @@ struct ChatMessagesView<WelcomeContent: View>: View {
         isUserAtBottom = true
       }
     }
+    // MARK: - Follow a streaming reply on a clock
+    //
+    // Data events cannot drive the follow. The reveal is paced independently of
+    // token arrival, so the transcript keeps growing between flushes and after
+    // the last one — this only decides *when* the follower runs, never where it
+    // scrolls to.
+    .task(id: isStreamingReply) {
+      if isStreamingReply {
+        isFollowingLiveEdge = true
+        return
+      }
+      try? await Task.sleep(for: .seconds(ChatStreamScroll.settleTail))
+      guard !Task.isCancelled else { return }
+      isFollowingLiveEdge = false
+    }
     .onAppear {
+      duplicateMessageIds = ChatMessageDeduplicator.duplicateIDs(in: messages)
       if !isLoadingInitial, !messages.isEmpty {
         handleInitialRestore(proxy: proxy)
       }
@@ -270,6 +397,12 @@ struct ChatMessagesView<WelcomeContent: View>: View {
     .onDisappear {
       cancelAllPendingScrolls()
     }
+  }
+
+  /// Whether omi's reply is still arriving, which is what the follow clock and
+  /// the paced reveal both key off.
+  private var isStreamingReply: Bool {
+    messages.last?.isStreaming == true
   }
 
   // MARK: - Message Count Change Handler
@@ -311,6 +444,11 @@ struct ChatMessagesView<WelcomeContent: View>: View {
 
     switch scrollMode {
     case .followingBottom:
+      // The damped follower owns the offset whenever it is running, including
+      // through the settle tail after the last token. A commanded scroll on top
+      // of it would assign an offset the follower is mid-way through
+      // integrating, which is a visible snap.
+      guard !isFollowingLiveEdge else { return }
       throttledScrollToBottom(proxy: proxy)
     case .freeScrolling:
       hasActivityBelow = true
@@ -334,6 +472,7 @@ struct ChatMessagesView<WelcomeContent: View>: View {
       defer {
         isInitialRestorePending = false
         initialRestoreWorkItem = nil
+        animatesInsertions = true
       }
       guard scrollMode == .followingBottom, !userIsScrolling else { return }
       scrollToBottom(proxy: proxy)
@@ -469,7 +608,7 @@ struct ChatMessagesView<WelcomeContent: View>: View {
     } else {
       let dupeIds = duplicateMessageIds
       let displayMessages = AgentLifecycleDisplayProjection.project(messages)
-      ForEach(displayMessages) { message in
+      ForEach(Array(displayMessages.enumerated()), id: \.element.id) { index, message in
         ChatBubble(
           message: message,
           app: app,
@@ -484,8 +623,36 @@ struct ChatMessagesView<WelcomeContent: View>: View {
           onOpenAgent: onOpenAgent,
           onOpenAgentRef: onOpenAgentRef
         )
+        .padding(
+          .top,
+          ChatTurnSpacing.leadingGap(
+            previous: index > 0 ? displayMessages[index - 1].sender : nil,
+            current: message.sender
+          )
+        )
+        // Omi's row is a text block that grows, not a thing that arrives — it
+        // is inserted empty and fills in, so only the user's own turn rises.
+        .transition(message.sender == .user ? .chatSendRise : .opacity)
         .id(message.id)
       }
+    }
+  }
+
+  /// Omi's mark at the foot of the transcript. It is mounted here rather than
+  /// inside the streaming bubble for two reasons: it shows before the reply has
+  /// any row of its own, and it stays after the reply lands, turning slowly, so
+  /// omi is present on the surface rather than only while it is busy.
+  ///
+  /// The empty state has its own hero mark, so this one waits for a transcript.
+  @ViewBuilder
+  private var workingIndicator: some View {
+    if !messages.isEmpty || isSending {
+      ChatWorkingIndicator(
+        label: isSending ? ChatWorkingStatus.label(for: messages.last) : nil,
+        motion: ChatWorkingStatus.motion(for: messages.last)
+      )
+      .padding(.top, ChatTurnSpacing.withinTurn)
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 
@@ -527,6 +694,11 @@ struct ChatMessagesView<WelcomeContent: View>: View {
   // coordinator then correctly finds the enclosing NSScrollView.
   private var scrollDetectors: some View {
     ZStack {
+      // Mounted alongside the detectors so its superview walk finds the same
+      // enclosing NSScrollView they do.
+      ChatLiveEdgeFollower(isActive: isFollowingLiveEdge) {
+        scrollMode == .followingBottom && !userIsScrolling
+      }
       ScrollPositionDetector { atBottom in
         isUserAtBottom = atBottom
         // Resume live following when the reader scrolls back to the
@@ -573,52 +745,58 @@ struct ChatMessagesView<WelcomeContent: View>: View {
         hasActivityBelow = false
         scrollToBottom(proxy: proxy)
       } label: {
-        ZStack(alignment: .center) {
-          Circle()
-            .fill(OmiColors.backgroundPrimary)
-            .frame(width: 36, height: 36)
-            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
-          Image(systemName: "arrow.down.circle.fill")
-            .scaledFont(size: OmiType.title)
-            .foregroundColor(OmiColors.textSecondary)
-        }
-        // Activity pulse: subtle white glow when new content arrived below
-        .overlay(
-          Circle()
-            .stroke(OmiColors.textSecondary.opacity(hasActivityBelow ? 0.6 : 0), lineWidth: 1.5)
-        )
-        .opacity(hasActivityBelow ? 1.0 : 0.85)
-        .scaleEffect(hasActivityBelow ? 1.08 : 1.0)
+        // A compact opaque chip rather than a bare glyph: it floats over live
+        // text, so it has to read as chrome instead of settling into the words
+        // underneath it.
+        Image(systemName: "arrow.down")
+          .scaledFont(size: OmiType.caption, weight: .semibold)
+          .foregroundStyle(OmiColors.textSecondary)
+          .frame(width: 28, height: 28)
+          .background(Circle().fill(OmiColors.backgroundPrimary))
+          .overlay(
+            Circle()
+              .stroke(Color.white.opacity(hasActivityBelow ? 0.30 : 0.12), lineWidth: 1)
+          )
+          .shadow(color: .black.opacity(0.45), radius: 8, y: 3)
+          .contentShape(Circle())
+          .scaleEffect(hasActivityBelow ? 1.06 : 1.0)
       }
       .buttonStyle(.plain)
       .accessibilityLabel("Jump to latest message")
-      .padding(.bottom, OmiSpacing.lg)
+      .padding(.bottom, OmiSpacing.sm)
       .transition(.scale.combined(with: .opacity))
       .omiAnimation(.easeInOut(duration: 0.2), value: scrollMode)
       .omiAnimation(.easeInOut(duration: 0.3), value: hasActivityBelow)
     }
   }
 
-  private func scrollToBottom(proxy: ScrollViewProxy) {
+  private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = false) {
     guard scrollMode == .followingBottom else { return }
     // Don't fight the user — skip if they're actively wheel/trackpad scrolling
     guard !userIsScrolling else { return }
     guard !messages.isEmpty else { return }
-    proxy.scrollTo("bottom-anchor", anchor: .bottom)
+    guard animated else {
+      proxy.scrollTo("bottom-anchor", anchor: .bottom)
+      return
+    }
+    OmiMotion.withGated(ChatStreamScroll.animation) {
+      proxy.scrollTo("bottom-anchor", anchor: .bottom)
+    }
   }
 
-  /// Throttled version of scrollToBottom — coalesces rapid calls (e.g. during
-  /// streaming) so we scroll at most once per ~80ms instead of every token.
-  /// This prevents the scroll → notify → state update → re-render → scroll
-  /// feedback loop from saturating the main thread.
+  /// Throttled version of scrollToBottom, for content that arrives whole: a
+  /// tool card, a resource strip, a citation row. Those add their height in one
+  /// step, so a short animated move reads better than a jump — unlike a paced
+  /// reveal, which the pin in the follow task owns instead.
   private func throttledScrollToBottom(proxy: ScrollViewProxy) {
     guard !userIsScrolling else { return }
     // Cancel any pending scroll — we'll schedule a fresh one
     scrollThrottleWorkItem?.cancel()
     let workItem = DispatchWorkItem { [self] in
-      scrollToBottom(proxy: proxy)
+      scrollToBottom(proxy: proxy, animated: true)
     }
     scrollThrottleWorkItem = workItem
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: workItem)
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + ChatStreamScroll.throttle, execute: workItem)
   }
 }

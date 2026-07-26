@@ -40,4 +40,14 @@ final class ChatMessageDeduplicatorTests: XCTestCase {
     let messages = [msg("1", "short repeated"), msg("2", "short repeated")]
     XCTAssertTrue(ChatMessageDeduplicator.duplicateIDs(in: messages).isEmpty)
   }
+
+  func testAStreamingReplyIsNeverFlaggedWhileItIsStillArriving() {
+    // A live reply passes through every prefix of its final text, so it
+    // transiently equals any earlier message it happens to be repeating the
+    // opening of. Collapsing it then would hide the reply as it was written.
+    let body = sharedOpening + " identical body"
+    var streaming = msg("2", body)
+    streaming.isStreaming = true
+    XCTAssertTrue(ChatMessageDeduplicator.duplicateIDs(in: [msg("1", body), streaming]).isEmpty)
+  }
 }

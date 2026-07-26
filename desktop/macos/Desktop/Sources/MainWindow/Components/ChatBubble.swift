@@ -47,24 +47,6 @@ struct ChatBubble: View {
     _lastSubmittedRating = State(initialValue: message.rating)
   }
 
-  /// Messages longer than this are truncated with a "Show more" button
-  private static let truncationThreshold = 500
-
-  /// Whether this message should be truncated
-  private var shouldTruncate: Bool {
-    !message.isStreaming && message.text.count > Self.truncationThreshold && !isExpanded
-  }
-
-  /// The text to display (truncated or full) — keeps the start of the message visible
-  private var displayText: String {
-    if shouldTruncate {
-      return String(message.text.prefix(Self.truncationThreshold)).trimmingCharacters(
-        in: .whitespacesAndNewlines
-      ) + "…"
-    }
-    return message.text
-  }
-
   private var backgroundAgentSummary: BackgroundAgentSummary? {
     guard message.sender == .ai, message.contentBlocks.isEmpty else { return nil }
     return BackgroundAgentSummary.parse(message.text)
@@ -92,40 +74,13 @@ struct ChatBubble: View {
       isStreaming: message.isStreaming
     )
 
-    HStack(alignment: .top, spacing: OmiSpacing.md) {
-      // Omi texts you: its replies carry the Omi mark on the left, and it spins
-      // while it's thinking of a response. App personas keep their own image.
-      if message.sender == .ai {
-        if let app = app {
-          AsyncImage(url: URL(string: app.image)) { phase in
-            switch phase {
-            case .success(let image):
-              image
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-            default:
-              Circle()
-                .fill(OmiColors.backgroundTertiary)
-            }
-          }
-          .frame(width: 32, height: 32)
-          .clipShape(Circle())
-        } else {
-          SBLogo(size: 22, spinning: message.isStreaming)
-            .frame(width: 32, height: 32, alignment: .center)
-        }
-      }
-
-      // Bubbles hug their content up to a readable cap — omi replies sit
-      // left, user messages sit right, neither spans the full column.
-      VStack(alignment: message.sender == .user ? .trailing : .leading, spacing: OmiSpacing.xxs) {
-        messageContentView(groupedBlocks)
-      }
-      .frame(
-        maxWidth: 640,
-        alignment: message.sender == .user ? .trailing : .leading
-      )
+    // Omi answers as plain text on the canvas — no avatar gutter, no bubble —
+    // so a long reply reads as prose. Only the user's own turn keeps a pill,
+    // capped short of the column so the two sides never look alike.
+    VStack(alignment: message.sender == .user ? .trailing : .leading, spacing: OmiSpacing.xxs) {
+      messageContentView(groupedBlocks)
     }
+    .modifier(ChatBubbleColumnWidth(isUser: message.sender == .user))
     .frame(maxWidth: .infinity, alignment: message.sender == .user ? .trailing : .leading)
     .contentShape(Rectangle())
     .onHover { isRowHovering = $0 }
@@ -134,26 +89,12 @@ struct ChatBubble: View {
   @ViewBuilder
   private func messageContentView(_ groupedBlocks: [ContentBlockGroup]) -> some View {
     if message.isStreaming && message.text.isEmpty && message.contentBlocks.isEmpty {
-      // Omi's own reply shows the spinning Omi-mark avatar while thinking, so no
-      // extra typing dots are needed; only app personas (no spinning mark) do.
-      if app != nil {
-        TypingIndicator()
-      }
+      // The transcript's own working row (ChatWorkingIndicator) carries the
+      // wait for every sender, so an empty streaming message renders nothing.
+      EmptyView()
     } else if message.sender == .ai && !message.contentBlocks.isEmpty {
       ForEach(groupedBlocks) { group in
         groupView(group)
-      }
-      if message.isStreaming, app != nil {
-        if case .toolCalls(_, let calls) = groupedBlocks.last,
-          calls.contains(where: { block in
-            if case .toolCall(_, _, let status, _, _, _) = block { return status.isInFlight }
-            return false
-          })
-        {
-          // Tool group has a running tool — its card already shows a spinner
-        } else {
-          TypingIndicator()
-        }
       }
       if !message.displayResources.isEmpty {
         ChatResourceStrip(resources: message.displayResources, density: .full, alignment: .leading)
@@ -193,31 +134,18 @@ struct ChatBubble: View {
         if let backgroundAgentSummary {
           BackgroundAgentSummaryCard(summary: backgroundAgentSummary, onOpenAgent: onOpenAgent)
         } else if !message.text.isEmpty {
-          OmiMarkdown(text: displayText, sender: message.sender)
-            .padding(.horizontal, OmiSpacing.md)
-            .padding(.vertical, OmiSpacing.sm)
-            .background(
-              message.sender == .user
-                ? OmiColors.userBubble : OmiColors.backgroundTertiary.opacity(0.42)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: OmiChrome.sectionRadius, style: .continuous))
-            .overlay(
-              RoundedRectangle(cornerRadius: OmiChrome.sectionRadius, style: .continuous)
-                .stroke(
-                  message.sender == .user ? Color.clear : OmiColors.border.opacity(0.4),
-                  lineWidth: 1
-                )
-            )
-            .padding(.top, OmiSpacing.hairline)
-        }
-
-        if backgroundAgentSummary == nil, message.text.count > Self.truncationThreshold {
-          Button(action: { isExpanded.toggle() }) {
-            Text(isExpanded ? "Show less" : "Show more")
-              .scaledFont(size: OmiType.caption)
-              .foregroundColor(.white)
+          if message.sender == .user {
+            OmiMarkdown(text: message.text, sender: .user)
+              .padding(.horizontal, OmiSpacing.md)
+              .padding(.vertical, OmiSpacing.sm)
+              .background(OmiColors.userBubble)
+              .clipShape(
+                RoundedRectangle(cornerRadius: OmiChrome.sectionRadius, style: .continuous)
+              )
+          } else {
+            StreamingMarkdownText(text: message.text, isStreaming: message.isStreaming)
+              .frame(maxWidth: .infinity, alignment: .leading)
           }
-          .buttonStyle(.plain)
         }
 
         if message.sender != .user, let resourceStrip {
@@ -260,16 +188,8 @@ struct ChatBubble: View {
         return AnyView(EmptyView())
       }
       return AnyView(
-        OmiMarkdown(text: text, sender: .ai)
-          .padding(.horizontal, OmiSpacing.md)
-          .padding(.vertical, OmiSpacing.sm)
-          .background(OmiColors.backgroundTertiary.opacity(0.42))
-          .clipShape(RoundedRectangle(cornerRadius: OmiChrome.sectionRadius, style: .continuous))
-          .overlay(
-            RoundedRectangle(cornerRadius: OmiChrome.sectionRadius, style: .continuous)
-              .stroke(OmiColors.border.opacity(0.4), lineWidth: 1)
-          )
-          .padding(.top, OmiSpacing.hairline)
+        StreamingMarkdownText(text: text, isStreaming: message.isStreaming)
+          .frame(maxWidth: .infinity, alignment: .leading)
       )
     case .toolCalls(_, let calls):
       return AnyView(
@@ -454,6 +374,28 @@ struct ChatBubble: View {
       if let metadata = message.metadata {
         MessageMetadataPopover(metadata: metadata)
       }
+    }
+  }
+}
+
+/// Width policy for one message row. Omi's reply takes the whole column; the
+/// user's pill stops short of it, so a long question and a long answer never
+/// end up the same width and the turn rhythm stays readable.
+enum ChatBubbleLayout {
+  static let userWidthFraction: CGFloat = 0.75
+}
+
+private struct ChatBubbleColumnWidth: ViewModifier {
+  let isUser: Bool
+
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    if isUser {
+      content.containerRelativeFrame(.horizontal, alignment: .trailing) { width, _ in
+        width * ChatBubbleLayout.userWidthFraction
+      }
+    } else {
+      content.frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 }

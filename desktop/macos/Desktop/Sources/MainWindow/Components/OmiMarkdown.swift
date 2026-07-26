@@ -59,21 +59,25 @@ struct OmiMarkdownContent: View, Equatable {
   let text: String
   let style: OmiMarkdown.Style
   let fontScale: CGFloat
-  let document: OmiMarkdownDocument
 
   init(text: String, style: OmiMarkdown.Style, fontScale: CGFloat) {
     self.text = text
     self.style = style
     self.fontScale = fontScale
-    self.document = OmiMarkdownDocument(markdown: text)
   }
 
   nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.text == rhs.text && lhs.style == rhs.style && lhs.fontScale == rhs.fontScale
   }
 
+  /// Parsed in `body`, never in `init`. An `EquatableView` builds the struct on
+  /// every parent render and only then asks `==` whether to skip `body` — a
+  /// document parsed in the initializer is paid for by every visible message on
+  /// every frame of a streaming reply, which is precisely what the equatable
+  /// boundary exists to avoid.
   var body: some View {
-    Group {
+    let document = OmiMarkdownDocument(markdown: text)
+    return Group {
       if document.blocks.count == 1, case .text(let content) = document.blocks[0].kind {
         // Single text segment — no VStack overhead
         textView(content)

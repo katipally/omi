@@ -385,15 +385,33 @@ enum ChatBubbleLayout {
   static let userWidthFraction: CGFloat = 0.75
 }
 
+/// The user pill is a fraction of the **message column**, which is not always
+/// the scroll view. `containerRelativeFrame` resolves against the nearest
+/// container — the `ScrollView` — so once the scroll view spans the shell and
+/// the column is capped inside it, that modifier sizes the pill against the
+/// whole window instead. Measuring the row's own width keeps the fraction bound
+/// to what the reader actually sees.
 private struct ChatBubbleColumnWidth: ViewModifier {
   let isUser: Bool
+
+  @State private var rowWidth: CGFloat = 0
 
   @ViewBuilder
   func body(content: Content) -> some View {
     if isUser {
-      content.containerRelativeFrame(.horizontal, alignment: .trailing) { width, _ in
-        width * ChatBubbleLayout.userWidthFraction
-      }
+      content
+        .frame(
+          maxWidth: rowWidth > 0 ? rowWidth * ChatBubbleLayout.userWidthFraction : .infinity,
+          alignment: .trailing
+        )
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .onGeometryChange(for: CGFloat.self) {
+          $0.size.width
+        } action: { width in
+          // This frame spans the row, so its width is the column width. The
+          // guard keeps a resize from re-entering layout on sub-pixel noise.
+          if abs(rowWidth - width) > 0.5 { rowWidth = width }
+        }
     } else {
       content.frame(maxWidth: .infinity, alignment: .leading)
     }

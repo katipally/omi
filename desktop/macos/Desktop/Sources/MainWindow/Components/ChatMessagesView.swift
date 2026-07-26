@@ -85,6 +85,10 @@ enum ChatSendMotion {
   static let riseDistance: CGFloat = 52
   static let enteringScale: CGFloat = 0.94
   static let insert: Animation = .spring(response: 0.38, dampingFraction: 0.8)
+  /// Just past the spring's settle. A re-anchor inside that window lands on an
+  /// offset the spring is still integrating, which is the snap this timing
+  /// exists to avoid.
+  static let settleDelay: TimeInterval = 0.42
 }
 
 private struct ChatSendRiseModifier: ViewModifier {
@@ -180,6 +184,19 @@ struct ChatMessagesView<WelcomeContent: View>: View {
   /// scrollbar doesn't clip right-aligned user pills when horizontalContentPadding
   /// is 0; the left edge stays aligned with the ask bar. Default 0.
   var trailingContentPadding: CGFloat = 0
+  /// Readable cap on the message column, applied to the rows rather than to the
+  /// scroll view.
+  ///
+  /// Capping the whole `ChatMessagesView` also narrows the `ScrollView`, and the
+  /// macOS overlay scroller rides the scroll view's trailing edge — so on a wide
+  /// window the scrollbar ends up floating hundreds of points inside the shell,
+  /// which reads as a panel rather than as the surface itself. Letting the scroll
+  /// view span the shell and capping the column keeps the scrollbar on the border
+  /// where the platform puts it. `nil` means no cap.
+  var contentColumnWidth: CGFloat? = nil
+  /// Bottom inset reserved for a composer that floats over the transcript, so
+  /// the last row can still scroll clear of it.
+  var bottomContentInset: CGFloat = 0
   @ViewBuilder var welcomeContent: () -> WelcomeContent
 
   /// IDs of messages that duplicate an earlier message in the same session.
@@ -200,6 +217,8 @@ struct ChatMessagesView<WelcomeContent: View>: View {
   /// Throttle token for scrollToBottom — prevents the streaming + scroll
   /// detection feedback loop from saturating the main thread.
   @State private var scrollThrottleWorkItem: DispatchWorkItem?
+  /// Post-insert re-anchor, held so a second send cancels the first's settle.
+  @State private var sendSettleWorkItem: DispatchWorkItem?
   /// True when the user is actively scrolling via scroll wheel/trackpad.
   /// Set immediately by the scroll wheel monitor to win the race against
   /// throttled programmatic scrolls during streaming.
@@ -282,6 +301,12 @@ struct ChatMessagesView<WelcomeContent: View>: View {
       .padding(.horizontal, horizontalContentPadding)
       .padding(.trailing, trailingContentPadding)
       .padding(.vertical, verticalContentPadding)
+      .padding(.bottom, bottomContentInset)
+      // The cap lands on the column, never on the scroll view — see
+      // `contentColumnWidth`. `.frame(maxWidth:)` alone would left-align the
+      // narrower column inside a wide scroll view, so it is centred explicitly.
+      .frame(maxWidth: contentColumnWidth ?? .infinity)
+      .frame(maxWidth: .infinity)
       // Do not enable text selection on the whole stack. SelectionOverlay on every
       // chrome Text (agent card headers, tool summaries, timestamps) can peg the
       // main thread in GraphHost layout. Message bodies opt in via OmiMarkdown.
@@ -493,8 +518,33 @@ struct ChatMessagesView<WelcomeContent: View>: View {
     scrollMode = .followingBottom
     hasActivityBelow = false
     userIsScrolling = false
-    scrollToBottom(proxy: proxy)
-    scheduleInitialScroll(proxy: proxy, delay: 0.1)
+
+    // One commanded move, inside the same transaction as the row's insert
+    // spring. `scrollTo` assigns the offset outright, so a second un-animated
+    // call partway through the spring snaps the row into place while it is
+    // still arriving — which is exactly what made a send look mechanical next
+    // to the same gesture in iMessage.
+    OmiMotion.withGated(ChatSendMotion.insert) {
+      scrollToBottom(proxy: proxy)
+    }
+    // The row's final height is not known at insert time: markdown, tool cards
+    // and attachments lay out later. One settle after the spring has finished
+    // covers that without ever landing mid-flight, and it is skipped when the
+    // transcript is already at the live edge.
+    scheduleSendSettle(proxy: proxy)
+  }
+
+  /// Re-anchors after the insert animation completes, only if the transcript
+  /// did not already end up at the bottom.
+  private func scheduleSendSettle(proxy: ScrollViewProxy) {
+    sendSettleWorkItem?.cancel()
+    let work = DispatchWorkItem {
+      sendSettleWorkItem = nil
+      guard scrollMode == .followingBottom, !userIsScrolling, !isUserAtBottom else { return }
+      scrollToBottom(proxy: proxy, animated: true)
+    }
+    sendSettleWorkItem = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + ChatSendMotion.settleDelay, execute: work)
   }
 
   // MARK: - Prepend Preservation
@@ -552,6 +602,8 @@ struct ChatMessagesView<WelcomeContent: View>: View {
   private func cancelAllPendingScrolls() {
     scrollThrottleWorkItem?.cancel()
     scrollThrottleWorkItem = nil
+    sendSettleWorkItem?.cancel()
+    sendSettleWorkItem = nil
     userScrollEndWorkItem?.cancel()
     userScrollEndWorkItem = nil
     initialRestoreWorkItem?.cancel()

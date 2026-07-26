@@ -251,6 +251,9 @@ struct DashboardPage: View {
   @AppStorage("systemAudioCaptureMode") private var systemAudioCaptureModeRaw =
     AssistantSettings.SystemAudioCaptureMode.onlyDuringMeetings.rawValue
   @AppStorage("useLegacyHomeDesign") private var useLegacyHomeDesign = false
+  /// Measured height of the floating composer column (suggestions + bar + error
+  /// card). The transcript reserves exactly this much at its foot.
+  @State private var homeComposerHeight: CGFloat = 0
   @State private var homeMode: HomeStageMode = HomeHistoryPresentationPolicy.openingMode
   @FocusState private var homeAskFieldFocused: Bool
 
@@ -295,6 +298,9 @@ struct DashboardPage: View {
   private static let homeAskBarMaxWidth: CGFloat = 980
   private static let homeStagePanelMaxWidth: CGFloat = 1280
   private static let homeChatColumnMaxWidth: CGFloat = 680
+  /// Fade band under the top bar, and the one the composer sits on top of.
+  private static let homeTranscriptTopFade: CGFloat = 24
+  private static let homeTranscriptBottomFade: CGFloat = 28
   private static let homeStageTopPadding: CGFloat = 8
   private static let homeStageBottomPadding: CGFloat = 26
   private static let homeStageAnimation = Animation.spring(response: 0.46, dampingFraction: 0.86)
@@ -804,9 +810,16 @@ struct DashboardPage: View {
   /// bar anchored beneath it. `homeAskBar` is one persistent instance across
   /// every mode, so hub→chat animates its frame (draft and focus preserved)
   /// instead of cross-fading two composers.
+  /// The transcript fills the stage and the composer floats over its foot.
+  ///
+  /// Stacking them instead left a fixed gap between the two that nothing used,
+  /// and made the transcript's height a function of the composer's — so growing
+  /// the input for a second line resized the surface above it. Overlapping gives
+  /// that height back to the transcript and lets text pass behind the bar, which
+  /// is what every chat client does and what the fade band exists to sell.
   private func homePanelStage(stageWidth: CGFloat, askBarWidth: CGFloat) -> some View {
-    VStack(spacing: 0) {
-      ZStack(alignment: .bottom) {
+    ZStack(alignment: .bottom) {
+      Group {
         switch homeMode {
         case .chat:
           homeChatPanel(width: askBarWidth)
@@ -818,31 +831,40 @@ struct DashboardPage: View {
           EmptyView()
         }
       }
-      .frame(maxWidth: .infinity)
-      .frame(maxHeight: .infinity)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
 
-      // Above the ask bar while the chat is empty — but not for a just-onboarded
-      // user, whose empty chat shows the personalized opener's own starters.
-      if showsRollingSuggestions {
-        homeRollingSuggestions
+      VStack(spacing: 0) {
+        // Above the ask bar while the chat is empty — but not for a just-onboarded
+        // user, whose empty chat shows the personalized opener's own starters.
+        if showsRollingSuggestions {
+          homeRollingSuggestions
+            .frame(width: askBarWidth)
+            .padding(.bottom, OmiSpacing.sm)
+            .transition(.homeSuggestionsFade)
+        }
+
+        homeAskBar
           .frame(width: askBarWidth)
-          .padding(.bottom, OmiSpacing.sm)
-          .transition(.homeSuggestionsFade)
+
+        dashboardChatErrorCard
+          .frame(width: askBarWidth)
+          .padding(.top, OmiSpacing.sm)
       }
-
-      homeAskBar
-        .frame(width: askBarWidth)
-        .padding(.top, OmiSpacing.xl)
-
-      dashboardChatErrorCard
-        .frame(width: askBarWidth)
-        .padding(.top, OmiSpacing.sm)
+      // The transcript reserves exactly this much room at its foot, so the last
+      // row can always be scrolled clear of the bar however tall the bar gets.
+      .onGeometryChange(for: CGFloat.self) {
+        $0.size.height
+      } action: { height in
+        // Sub-pixel noise must not re-enter layout through the inset it feeds.
+        if abs(homeComposerHeight - height) > 0.5 { homeComposerHeight = height }
+      }
     }
     // The suggestion block is three rows tall. Dropping it on the first send
     // with no transaction takes that height out from under the transcript in a
     // single frame, which lands on top of the row-insert spring and reads as
     // the whole stage flinching. One curve owns the handover.
     .omiAnimation(SBMotion.message, value: showsRollingSuggestions)
+    .omiAnimation(SBMotion.standard, value: homeComposerHeight)
   }
 
   /// Whether the rolling prompt suggestions have a reason to be on screen.
@@ -1156,29 +1178,41 @@ struct DashboardPage: View {
         },
         horizontalContentPadding: 0,
         verticalContentPadding: OmiSpacing.sm,
-        trailingContentPadding: OmiSpacing.md,
+        // The scroller is on the shell edge now, well clear of the column, so
+        // right-aligned pills no longer need to be held off it.
+        trailingContentPadding: 0,
+        contentColumnWidth: width,
+        bottomContentInset: homeComposerHeight + Self.homeTranscriptBottomFade,
         welcomeContent: { dashboardChatWelcome }
       )
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .mask(
-        LinearGradient(
-          stops: [
-            .init(color: .clear, location: 0.0),
-            .init(color: .black, location: 0.025),
-            .init(color: .black, location: 0.97),
-            .init(color: .clear, location: 1.0),
-          ],
-          startPoint: .top,
-          endPoint: .bottom
-        )
-      )
-      .padding(.bottom, OmiSpacing.xs)
-
+      .mask(homeTranscriptMask)
     }
-    // Chat is the Home surface itself — no card chrome, it sits directly on
-    // the ambient canvas. The column matches the ask bar's width exactly so
-    // message edges align with the bar's edges.
-    .frame(width: width)
+    // Chat is the Home surface itself — no card chrome, it sits directly on the
+    // ambient canvas. The scroll view spans the stage so the macOS overlay
+    // scroller rides the shell's edge; the readable column is capped on the rows
+    // instead, and still matches the ask bar's width so message edges line up
+    // with the bar's.
+    .frame(maxWidth: .infinity)
+  }
+
+  /// Fixed fade bands, not fractions of the panel.
+  ///
+  /// Proportional stops re-scale the fade every time the panel resizes, and the
+  /// panel resizes whenever the composer grows a line — so the band visibly
+  /// breathed while typing. The bottom band sits at the composer's top edge and
+  /// everything below it is masked out entirely: the composer is translucent, so
+  /// text left visible behind it would read through the fill.
+  private var homeTranscriptMask: some View {
+    VStack(spacing: 0) {
+      LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+        .frame(height: Self.homeTranscriptTopFade)
+      Rectangle()
+      LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+        .frame(height: Self.homeTranscriptBottomFade)
+      Color.clear
+        .frame(height: homeComposerHeight)
+    }
   }
 
   // MARK: Connect tray

@@ -420,6 +420,11 @@ class FloatingControlBarState: NSObject, ObservableObject {
   @Published private(set) var transientHintText: String = ""
   private var transientHintClearTask: Task<Void, Never>?
 
+  /// The retired transient-hint channel. Nothing in Sources or Tests calls it,
+  /// so `transientHintText` never leaves its empty initial value and the notch's
+  /// fallback to it is unreachable — the hint presentation is fed entirely by
+  /// the reducer's `pttHintText`. The method and the property stay in-tree so
+  /// their removal can be its own reviewable change.
   func flashHint(_ text: String, for seconds: TimeInterval = 3) {
     transientHintText = text
     transientHintClearTask?.cancel()

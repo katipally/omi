@@ -82,7 +82,12 @@ final class NotchScreenManager {
     panels.removeAll()
   }
 
-  /// Dismiss a lingering reply on every panel (Esc, or a new turn starting).
+  /// The retired cross-panel linger controls. Nothing in Sources or Tests calls
+  /// either one: Esc is handled by the per-panel monitors in `NotchView`, which
+  /// reach `NotchViewModel.dismissReply` directly, and a new turn clears the
+  /// previous reply through `resetReply` on the panel that owns it — so there is
+  /// no fan-out left to perform or query. Both stay in-tree so their removal can
+  /// be its own reviewable change.
   func dismissLingeringReply() {
     for (_, panel) in panels where panel.vm.isLingeringReply {
       OmiMotion.withGated(NotchAnimation.close) { panel.vm.dismissReply() }

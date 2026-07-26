@@ -37,9 +37,25 @@ enum NotchMetrics {
   /// Extra width the hint strip takes over the closed notch.
   static let hintExtraWidth: CGFloat = 100
   /// Readable status strip under the chrome for too-short PTT / mic errors.
+  /// The floor the measured strip clamps up to, so a one-word hint still reads
+  /// as a strip rather than a hairline.
   static let hintRowHeight: CGFloat = 30
-  /// Proactive notification card shown below the closed chrome.
+  /// Ceiling for the measured hint strip. A hint is a status line, not a
+  /// paragraph; past this the text truncates instead of growing the notch.
+  static let hintMaxHeight: CGFloat = 78
+  /// Retired: the proactive card is measured now, so nothing derives a panel
+  /// size from this pair. It stays in-tree so its removal can be its own
+  /// reviewable change.
   static let notificationSize = CGSize(width: 430, height: 108)
+  /// The proactive card lays out at one fixed width across every variant —
+  /// only the height follows the content, the same contract the voice body has.
+  static let notificationWidth: CGFloat = 430
+  /// Floor for the measured card. The single-line receipt is the shortest card
+  /// there is; below this the panel reads as a sliver rather than a surface.
+  static let notificationMinHeight: CGFloat = 42
+  /// Ceiling for the measured card. Content is capped to fit inside it, so this
+  /// is a guard against a runaway string, not a routine clamp.
+  static let notificationMaxHeight: CGFloat = 220
   static let notificationSpacing: CGFloat = 8
   /// Slack around the content so the fixed window can hold glow bleed + shadow.
   static let shadowPadding: CGFloat = 22

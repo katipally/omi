@@ -9,6 +9,7 @@ struct NotchView: View {
   @EnvironmentObject var barState: FloatingControlBarState
   @ObservedObject private var agents = AgentPillsManager.shared
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.sbTheme) private var sb
 
   @State private var isHovering = false
   /// Esc key monitors, live only while a reply lingers (zero idle cost).
@@ -22,6 +23,12 @@ struct NotchView: View {
     barState.voiceDisplayID.map { $0 == vm.displayID } ?? true
   }
 
+  /// The status line the ladder derives from: the reducer's PTT banner, falling
+  /// back to the one-shot transient hint for states the reducer does not own.
+  private var hintText: String {
+    barState.pttHintText.isEmpty ? barState.transientHintText : barState.pttHintText
+  }
+
   /// Single value that both the panel size and the rendered content derive
   /// from. Priority:
   /// listening > thinking > responding > hint > notification > idle.
@@ -32,7 +39,7 @@ struct NotchView: View {
       isListening: barState.isListeningPhase,
       isThinking: barState.isThinking,
       isResponding: barState.isVoiceResponseActive,
-      hintText: barState.pttHintText.isEmpty ? barState.transientHintText : barState.pttHintText,
+      hintText: hintText,
       notificationID: barState.currentNotification?.id,
       isVoiceDisplay: isVoiceDisplay
     )
@@ -125,6 +132,17 @@ struct NotchView: View {
       .onChange(of: vm.isLingeringReply) { _, lingering in
         if lingering { installLingerEscMonitors() } else { removeLingerEscMonitors() }
       }
+      // A measurement is dropped when its surface leaves, not when its content
+      // changes. Two cards in a row animate from one measured height to the
+      // next; a card arriving after an empty stretch has to open at the resting
+      // height and grow, or it opens at the previous card's height and corrects
+      // on the following frame, which reads as a flinch.
+      .onChange(of: barState.currentNotification?.id) { _, id in
+        if id == nil { vm.notificationBodyHeight = nil }
+      }
+      .onChange(of: hintText.isEmpty) { _, empty in
+        if empty { vm.hintBodyHeight = nil }
+      }
       .onDisappear { removeLingerEscMonitors() }
   }
 
@@ -190,6 +208,8 @@ struct NotchView: View {
     }
     .animation(morphAnimation, value: presentation)
     .animation(heightAnimation, value: vm.voiceBodyHeight)
+    .animation(heightAnimation, value: vm.notificationBodyHeight)
+    .animation(heightAnimation, value: vm.hintBodyHeight)
     .contentShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius))
     .onHover(perform: handleHover)
     .contextMenu {
@@ -229,13 +249,22 @@ struct NotchView: View {
       )
       .transition(contentTransition)
     case .hint(let text):
-      VStack(spacing: 2) {
+      // Spacing lives in the strip's own padding rather than the stack, so the
+      // measured value is the whole strip and the panel height is exactly
+      // `closed chrome + measured strip` with nothing unaccounted for.
+      VStack(spacing: 0) {
         chromeReserve
         Text(text)
           .scaledFont(size: OmiType.caption, weight: .medium)
-          .foregroundStyle(.white.opacity(0.75))
-          .lineLimit(1)
+          .foregroundStyle(sb.pillInk(.w75))
+          .multilineTextAlignment(.center)
+          .lineLimit(hintLineLimit)
+          .truncationMode(.tail)
           .padding(.horizontal, OmiSpacing.md)
+          .padding(.top, OmiSpacing.hairline)
+          .padding(.bottom, OmiSpacing.sm)
+          .frame(maxWidth: .infinity)
+          .measuredIntrinsicHeight(updateHintBodyHeight)
       }
       .transition(contentTransition)
     case .notification(let id):
@@ -243,6 +272,7 @@ struct NotchView: View {
         chromeReserve
         if let notification = barState.currentNotification, notification.id == id {
           NotchNotificationCard(notification: notification)
+            .measuredIntrinsicHeight(updateNotificationBodyHeight)
         }
       }
       .transition(contentTransition)
@@ -256,6 +286,11 @@ struct NotchView: View {
   private var chromeReserve: some View {
     Color.clear.frame(height: vm.closedNotchSize.height)
   }
+
+  /// A hint is a status line, not a paragraph. Two lines holds every string the
+  /// reducer produces even at the largest type sizes; anything longer truncates
+  /// rather than growing the notch into a panel.
+  private var hintLineLimit: Int { 2 }
 
   // MARK: - The Omi mark (one instance for the panel's whole life)
 
@@ -322,7 +357,7 @@ struct NotchView: View {
     .overlay(alignment: .topTrailing) {
       if barState.isRecording, !presentation.isVoiceTurn {
         Circle()
-          .fill(Color.red.opacity(0.9))
+          .fill(OmiColors.error.opacity(0.9))
           .frame(width: 5, height: 5)
       }
     }
@@ -401,12 +436,48 @@ struct NotchView: View {
     }
   }
 
-  /// Feeds the measured voice-content height into the view model behind a 4pt
-  /// jitter filter: sub-pixel measurement noise must not drive the height
-  /// animation or the measure -> resize -> remeasure loop oscillates.
+  // MARK: - Measurement
+
+  /// Sub-pixel measurement noise must not drive the height animation: a
+  /// remeasure within this tolerance is treated as the same height, which is
+  /// what keeps the measure -> resize -> remeasure loop from oscillating. Below
+  /// a line of the smallest type, so nothing a reader can see is filtered out.
+  private static let heightJitterTolerance: CGFloat = 4
+
+  /// Whether a fresh measurement is far enough from the one in hand to be worth
+  /// re-sizing for. Every measured surface asks this, so they cannot drift to
+  /// different tolerances.
+  private func exceedsJitter(_ measured: CGFloat, _ current: CGFloat?) -> Bool {
+    abs((current ?? 0) - measured) > Self.heightJitterTolerance
+  }
+
   private func updateVoiceBodyHeight(_ height: CGFloat) {
-    if abs((vm.voiceBodyHeight ?? 0) - height) > 4 {
-      vm.voiceBodyHeight = height
-    }
+    if exceedsJitter(height, vm.voiceBodyHeight) { vm.voiceBodyHeight = height }
+  }
+
+  private func updateNotificationBodyHeight(_ height: CGFloat) {
+    if exceedsJitter(height, vm.notificationBodyHeight) { vm.notificationBodyHeight = height }
+  }
+
+  private func updateHintBodyHeight(_ height: CGFloat) {
+    if exceedsJitter(height, vm.hintBodyHeight) { vm.hintBodyHeight = height }
+  }
+}
+
+extension View {
+  /// Reports this view's INTRINSIC height.
+  ///
+  /// `fixedSize` is the load-bearing half. The notch's content sits inside a
+  /// frame that the measurement itself determines, so measuring the container
+  /// would hand the panel's current height straight back and the
+  /// measure -> resize -> remeasure loop would feed on itself. Pinned to its
+  /// own ideal height, the view reports what its content actually needs.
+  fileprivate func measuredIntrinsicHeight(_ report: @escaping (CGFloat) -> Void) -> some View {
+    fixedSize(horizontal: false, vertical: true)
+      .onGeometryChange(for: CGFloat.self) {
+        $0.size.height
+      } action: {
+        report($0)
+      }
   }
 }

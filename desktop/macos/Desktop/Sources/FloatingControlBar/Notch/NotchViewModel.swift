@@ -22,6 +22,16 @@ final class NotchViewModel: ObservableObject {
   /// remeasure loop oscillate.
   @Published var voiceBodyHeight: CGFloat?
 
+  /// Measured intrinsic height of the proactive card. Same contract as
+  /// `voiceBodyHeight`: it sizes the panel but never the window, and it rides
+  /// the isolated height timeline rather than the morph spring.
+  @Published var notificationBodyHeight: CGFloat?
+  /// Measured intrinsic height of the hint strip. Kept apart from the card's
+  /// measurement even though the two surfaces are mutually exclusive: one
+  /// shared value would size an incoming hint from the outgoing card until the
+  /// first remeasure lands.
+  @Published var hintBodyHeight: CGFloat?
+
   /// The reply text, captured live during streaming and held after the turn
   /// ends so the reply can linger on screen for a few seconds. Because it is
   /// already set while the response streams, `isLingeringReply` is true the
@@ -94,16 +104,36 @@ final class NotchViewModel: ObservableObject {
     CGSize(width: closedNotchSize.width, height: closedNotchSize.height + 42)
   }
 
-  var hintSize: CGSize {
-    CGSize(
-      width: clampValue(closedNotchSize.width + NotchMetrics.hintExtraWidth, 280, 380),
-      height: closedNotchSize.height + NotchMetrics.hintRowHeight)
+  var hintWidth: CGFloat {
+    clampValue(closedNotchSize.width + NotchMetrics.hintExtraWidth, 280, 380)
   }
 
+  /// The strip follows its text the way the voice body follows the reply: a
+  /// one-line hint gets one line of chrome, a wrapped one grows to hold it.
+  /// Unmeasured falls back to the floor, so the strip opens at its resting
+  /// height and grows — never opens tall and snaps down.
+  var hintSize: CGSize {
+    let row =
+      hintBodyHeight.map { clampValue($0, NotchMetrics.hintRowHeight, NotchMetrics.hintMaxHeight) }
+      ?? NotchMetrics.hintRowHeight
+    return CGSize(width: hintWidth, height: closedNotchSize.height + row)
+  }
+
+  var notificationWidth: CGFloat {
+    max(closedNotchSize.width, NotchMetrics.notificationWidth)
+  }
+
+  /// The panel is exactly as tall as the card inside it. A fixed card height is
+  /// what left a short notification sitting in dead black and clipped a long
+  /// one, so the height comes from the card's own intrinsic measurement.
   var notificationSize: CGSize {
-    CGSize(
-      width: max(closedNotchSize.width, NotchMetrics.notificationSize.width),
-      height: closedNotchSize.height + NotchMetrics.notificationSpacing + NotchMetrics.notificationSize.height)
+    let card =
+      notificationBodyHeight.map {
+        clampValue($0, NotchMetrics.notificationMinHeight, NotchMetrics.notificationMaxHeight)
+      } ?? NotchMetrics.notificationMinHeight
+    return CGSize(
+      width: notificationWidth,
+      height: closedNotchSize.height + NotchMetrics.notificationSpacing + card)
   }
 
   /// The panel size for a presentation — the single sizing authority. Content
@@ -118,12 +148,25 @@ final class NotchViewModel: ObservableObject {
     }
   }
 
+  /// The tallest the passive surfaces can ever be. These are what the window is
+  /// sized from — deliberately the ceilings, never the measured values. Feeding
+  /// a measurement into the window frame would resize the NSPanel itself as a
+  /// card grew, and the expansion would stop looking like it came out of the
+  /// camera housing.
+  private var notificationMaxPanelHeight: CGFloat {
+    closedNotchSize.height + NotchMetrics.notificationSpacing + NotchMetrics.notificationMaxHeight
+  }
+
+  private var hintMaxPanelHeight: CGFloat {
+    closedNotchSize.height + NotchMetrics.hintMaxHeight
+  }
+
   /// The window is fixed at the largest any presentation can ever need; only
   /// the inner content scales, so expansion always originates from the notch.
   private var maxContentSize: CGSize {
     CGSize(
-      width: max(notificationSize.width, voiceWidth),
-      height: max(notificationSize.height, voiceMaxHeight)
+      width: max(notificationWidth, max(hintWidth, voiceWidth)),
+      height: max(notificationMaxPanelHeight, max(hintMaxPanelHeight, voiceMaxHeight))
     )
   }
 

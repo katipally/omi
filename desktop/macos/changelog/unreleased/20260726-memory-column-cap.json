@@ -1,0 +1,3 @@
+{
+  "change": "The Memory and Conversations pages now keep their scrollbar on the window edge instead of floating it inside the page, so a wide window no longer reads as a narrow panel"
+}

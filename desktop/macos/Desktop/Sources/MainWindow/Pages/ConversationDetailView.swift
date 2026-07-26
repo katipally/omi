@@ -6,6 +6,11 @@ import SwiftUI
 struct ConversationDetailView: View {
   let conversation: ServerConversation
   let onBack: () -> Void
+  /// Readable cap for the header row and the summary column, applied to those
+  /// rather than to the ScrollView: macOS rides the overlay scroller on the
+  /// scroll view's trailing edge, so capping the scroll view floats the
+  /// scrollbar inside the shell. `.infinity` means no cap.
+  var contentColumnWidth: CGFloat = .infinity
   var folders: [Folder] = []
   var onMoveToFolder: ((String, String?) async -> Void)?
   var onDelete: (() -> Void)?
@@ -47,6 +52,9 @@ struct ConversationDetailView: View {
 
   // Speaker naming state
   @State private var selectedSegmentForNaming: TranscriptSegment? = nil
+
+  // The folder Menu carries OmiIconButton's chrome by hand (see its label).
+  @State private var isFolderMenuHovered = false
 
   static func assignmentMetadata(
     for segmentIndices: [Int],
@@ -160,6 +168,10 @@ struct ConversationDetailView: View {
           }
           .shadow(color: Color.black.opacity(0.1), radius: 20, x: 0, y: 8)
           .padding(OmiSpacing.xxl)
+          // The cap lands here rather than on the ScrollView — see
+          // `contentColumnWidth` — and the outer frame recentres the column.
+          .frame(maxWidth: contentColumnWidth)
+          .frame(maxWidth: .infinity)
         }
       }
       // Collapses to zero width when the transcript is expanded so the drawer
@@ -314,13 +326,13 @@ struct ConversationDetailView: View {
           Text("Back")
             .scaledFont(size: OmiType.body, weight: .medium)
         }
-        .foregroundColor(OmiColors.accent)
+        .foregroundColor(OmiColors.textSecondary)
       }
       .buttonStyle(.plain)
 
       // Emoji
       Text(displayConversation.structured.emoji.isEmpty ? "\u{1F4AC}" : displayConversation.structured.emoji)
-        .scaledFont(size: OmiType.title)
+        .scaledFont(size: OmiType.heading)
 
       // Title + timestamp subtitle
       VStack(alignment: .leading, spacing: OmiSpacing.hairline) {
@@ -362,8 +374,18 @@ struct ConversationDetailView: View {
       inlineActionButtons
     }
     .padding(.horizontal, OmiSpacing.xxl)
-    .padding(.vertical, OmiSpacing.lg)
-    .background(OmiColors.backgroundTertiary.opacity(0.5))
+    .padding(.top, OmiSpacing.lg)
+    .padding(.bottom, OmiSpacing.md)
+    // Same shape as the Conversations list header this view is pushed from, so
+    // the row you tapped and the detail it opens sit on one continuous grid;
+    // the hairline is the hub band's, not a slab of its own.
+    .frame(maxWidth: contentColumnWidth)
+    .frame(maxWidth: .infinity)
+    .overlay(alignment: .bottom) {
+      Rectangle()
+        .fill(OmiColors.border.opacity(0.25))
+        .frame(height: 1)
+    }
     .alert("Edit Conversation Title", isPresented: $showEditDialog) {
       TextField("Title", text: $editedTitle)
       Button("Cancel", role: .cancel) {}
@@ -412,39 +434,23 @@ struct ConversationDetailView: View {
   // MARK: - Inline Action Buttons
 
   private var inlineActionButtons: some View {
-    HStack(spacing: OmiSpacing.sm) {
+    HStack(spacing: OmiSpacing.xxs) {
       // Copy link button
-      Button(action: { Task { await copyLink() } }) {
-        Image(systemName: isCopyingLink ? "arrow.triangle.2.circlepath" : "link")
-          .scaledFont(size: OmiType.body)
-          .foregroundColor(OmiColors.textSecondary)
-          .frame(width: 28, height: 28)
-          .background(
-            Circle()
-              .fill(OmiColors.backgroundTertiary)
-          )
+      OmiIconButton(
+        systemName: isCopyingLink ? "arrow.triangle.2.circlepath" : "link",
+        help: "Copy link"
+      ) {
+        Task { await copyLink() }
       }
-      .buttonStyle(.plain)
       .disabled(isCopyingLink)
-      .help("Copy link")
 
       // Copy transcript button
-      Button(action: copyTranscript) {
-        Image(systemName: "doc.on.doc")
-          .scaledFont(size: OmiType.body)
-          .foregroundColor(OmiColors.textSecondary)
-          .frame(width: 28, height: 28)
-          .background(
-            Circle()
-              .fill(OmiColors.backgroundTertiary)
-          )
-      }
-      .buttonStyle(.plain)
-      .disabled(!canCopyTranscript)
-      .help("Copy transcript")
+      OmiIconButton(systemName: "doc.on.doc", help: "Copy transcript") { copyTranscript() }
+        .disabled(!canCopyTranscript)
 
       // Move to folder button (menu)
       if !folders.isEmpty {
+        let isFiled = displayConversation.folderId != nil
         Menu {
           if displayConversation.folderId != nil {
             Button(action: {
@@ -469,33 +475,34 @@ struct ConversationDetailView: View {
             .disabled(displayConversation.folderId == folder.id)
           }
         } label: {
-          Image(systemName: displayConversation.folderId != nil ? "folder.fill" : "folder")
-            .scaledFont(size: OmiType.body)
-            .foregroundColor(displayConversation.folderId != nil ? OmiColors.accent : OmiColors.textSecondary)
-            .frame(width: 28, height: 28)
+          // Menu owns its own label, so it cannot be an OmiIconButton; it wears
+          // that button's chrome instead so the row reads as one set.
+          Image(systemName: isFiled ? "folder.fill" : "folder")
+            .scaledFont(size: OmiType.body, weight: .semibold)
+            .foregroundColor(isFiled || isFolderMenuHovered ? OmiColors.textPrimary : OmiColors.textSecondary)
+            .frame(width: OmiChrome.controlHeight, height: OmiChrome.controlHeight)
             .background(
               Circle()
-                .fill(OmiColors.backgroundTertiary)
+                .fill(
+                  isFiled
+                    ? Color.white.opacity(0.12)
+                    : (isFolderMenuHovered ? Color.white.opacity(0.08) : Color.clear)
+                )
             )
+            .contentShape(Circle())
         }
         .menuStyle(.borderlessButton)
-        .frame(width: 28)
+        .frame(width: OmiChrome.controlHeight)
         .help("Move to folder")
+        .onHover { hovering in
+          OmiMotion.withGated(.easeOut(duration: 0.12)) { isFolderMenuHovered = hovering }
+        }
       }
 
       // Delete button
-      Button(action: { showDeleteConfirmation = true }) {
-        Image(systemName: "trash")
-          .scaledFont(size: OmiType.body)
-          .foregroundColor(OmiColors.error)
-          .frame(width: 28, height: 28)
-          .background(
-            Circle()
-              .fill(OmiColors.backgroundTertiary)
-          )
+      OmiIconButton(systemName: "trash", help: "Delete conversation") {
+        showDeleteConfirmation = true
       }
-      .buttonStyle(.plain)
-      .help("Delete conversation")
     }
   }
 
@@ -643,59 +650,38 @@ struct ConversationDetailView: View {
         Spacer()
 
         // Expand / collapse the drawer to fill the window for full-width reading
-        Button(action: {
+        OmiIconButton(
+          systemName: isTranscriptExpanded
+            ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+          isActive: isTranscriptExpanded,
+          help: isTranscriptExpanded ? "Collapse transcript" : "Expand transcript"
+        ) {
           OmiMotion.withGated(.easeInOut(duration: 0.25)) {
             isTranscriptExpanded.toggle()
           }
-        }) {
-          Image(
-            systemName: isTranscriptExpanded
-              ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"
-          )
-          .scaledFont(size: OmiType.body)
-          .foregroundColor(OmiColors.textSecondary)
-          .frame(width: 28, height: 28)
-          .background(Circle().fill(OmiColors.backgroundTertiary))
         }
-        .buttonStyle(.plain)
-        .help(isTranscriptExpanded ? "Collapse transcript" : "Expand transcript")
 
         // Copy button
-        Button(action: copyTranscript) {
-          Image(systemName: "doc.on.doc")
-            .scaledFont(size: OmiType.body)
-            .foregroundColor(OmiColors.textSecondary)
-            .frame(width: 28, height: 28)
-            .background(
-              Circle()
-                .fill(OmiColors.backgroundTertiary)
-            )
-        }
-        .buttonStyle(.plain)
-        .help("Copy transcript")
+        OmiIconButton(systemName: "doc.on.doc", help: "Copy transcript") { copyTranscript() }
 
         // Close button
-        Button(action: {
+        OmiIconButton(systemName: "xmark", help: "Close transcript") {
           OmiMotion.withGated(.easeInOut(duration: 0.25)) {
             showTranscriptDrawer = false
             isTranscriptExpanded = false
           }
-        }) {
-          Image(systemName: "xmark")
-            .scaledFont(size: OmiType.body)
-            .foregroundColor(OmiColors.textSecondary)
-            .frame(width: 28, height: 28)
-            .background(
-              Circle()
-                .fill(OmiColors.backgroundTertiary)
-            )
         }
-        .buttonStyle(.plain)
-        .help("Close transcript")
       }
       .padding(.horizontal, OmiSpacing.xl)
-      .padding(.vertical, OmiSpacing.md)
-      .background(OmiColors.backgroundTertiary.opacity(0.5))
+      .padding(.top, OmiSpacing.lg)
+      .padding(.bottom, OmiSpacing.md)
+      // Same band as the detail header across the divider, or the drawer would
+      // be the one slab left in the feature.
+      .overlay(alignment: .bottom) {
+        Rectangle()
+          .fill(OmiColors.border.opacity(0.25))
+          .frame(height: 1)
+      }
 
       // Drawer content
       if displayConversation.transcriptPresenceState == .lockedOrRedacted && !isLoadingConversation {
@@ -1095,306 +1081,5 @@ extension ServerConversation {
     // This would need to be implemented with a proper initializer
     // For now, previews won't work without mock data
     fatalError("Preview not implemented")
-  }
-}
-
-// MARK: - App Result Card
-
-struct AppResultCard: View {
-  let result: AppResponse
-  let app: OmiApp?
-
-  @State private var isExpanded = false
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: OmiSpacing.sm) {
-      // Header
-      HStack(spacing: OmiSpacing.sm) {
-        if let app = app {
-          AsyncImage(url: URL(string: app.image)) { phase in
-            switch phase {
-            case .success(let image):
-              image
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-            default:
-              RoundedRectangle(cornerRadius: OmiChrome.elementRadius)
-                .fill(OmiColors.backgroundTertiary)
-            }
-          }
-          .frame(width: 32, height: 32)
-          .clipShape(RoundedRectangle(cornerRadius: OmiChrome.elementRadius))
-
-          VStack(alignment: .leading, spacing: OmiSpacing.hairline) {
-            Text(app.name)
-              .scaledFont(size: OmiType.body, weight: .medium)
-              .foregroundColor(OmiColors.textPrimary)
-
-            Text(app.author)
-              .scaledFont(size: OmiType.caption)
-              .foregroundColor(OmiColors.textTertiary)
-          }
-        } else {
-          Image(systemName: "app.fill")
-            .scaledFont(size: OmiType.subheading)
-            .foregroundColor(OmiColors.textTertiary)
-            .frame(width: 32, height: 32)
-            .background(OmiColors.backgroundTertiary)
-            .clipShape(RoundedRectangle(cornerRadius: OmiChrome.elementRadius))
-
-          Text("App")
-            .scaledFont(size: OmiType.body, weight: .medium)
-            .foregroundColor(OmiColors.textPrimary)
-        }
-
-        Spacer()
-
-        Button(action: { OmiMotion.withGated { isExpanded.toggle() } }) {
-          Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-            .scaledFont(size: OmiType.caption)
-            .foregroundColor(OmiColors.textTertiary)
-        }
-        .buttonStyle(.plain)
-      }
-
-      // Content
-      if isExpanded || result.content.count < 200 {
-        Text(result.content)
-          .scaledFont(size: OmiType.body)
-          .foregroundColor(OmiColors.textSecondary)
-          .textSelection(.enabled)
-          .lineSpacing(4)
-      } else {
-        Text(result.content.prefix(200) + "...")
-          .scaledFont(size: OmiType.body)
-          .foregroundColor(OmiColors.textSecondary)
-          .textSelection(.enabled)
-          .lineSpacing(4)
-      }
-
-      // "Generated by" footer
-      if let app = app {
-        HStack(spacing: OmiSpacing.xs) {
-          AsyncImage(url: URL(string: app.image)) { phase in
-            switch phase {
-            case .success(let image):
-              image
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-            default:
-              RoundedRectangle(cornerRadius: OmiChrome.stripRadius)
-                .fill(OmiColors.backgroundTertiary)
-            }
-          }
-          .frame(width: 16, height: 16)
-          .clipShape(RoundedRectangle(cornerRadius: OmiChrome.stripRadius))
-
-          Text("Generated by \(app.name)")
-            .scaledFont(size: OmiType.caption)
-            .foregroundColor(OmiColors.textTertiary)
-        }
-        .padding(.horizontal, OmiSpacing.sm)
-        .padding(.vertical, OmiSpacing.xxs)
-        .background(
-          Capsule()
-            .fill(OmiColors.backgroundTertiary.opacity(0.6))
-        )
-      }
-    }
-    .padding(OmiSpacing.md)
-    .background(
-      RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius)
-        .fill(OmiColors.backgroundSecondary)
-    )
-  }
-}
-
-// MARK: - Suggested App Card
-
-struct SuggestedAppCard: View {
-  let app: OmiApp
-  let isLoading: Bool
-  let onTap: () -> Void
-
-  @State private var isHovering = false
-
-  var body: some View {
-    Button(action: onTap) {
-      VStack(spacing: OmiSpacing.sm) {
-        ZStack {
-          AsyncImage(url: URL(string: app.image)) { phase in
-            switch phase {
-            case .success(let image):
-              image
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-            default:
-              RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius)
-                .fill(OmiColors.backgroundTertiary)
-            }
-          }
-          .frame(width: 56, height: 56)
-          .clipShape(RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius))
-
-          if isLoading {
-            RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius)
-              .fill(Color.black.opacity(0.5))
-              .frame(width: 56, height: 56)
-
-            ProgressView()
-              .scaleEffect(0.7)
-              .tint(.white)
-          }
-        }
-
-        Text(app.name)
-          .scaledFont(size: OmiType.caption, weight: .medium)
-          .foregroundColor(OmiColors.textPrimary)
-          .lineLimit(1)
-      }
-      .frame(width: 80)
-      .padding(.vertical, OmiSpacing.sm)
-      .padding(.horizontal, OmiSpacing.sm)
-      .background(
-        RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius)
-          .fill(isHovering ? OmiColors.backgroundTertiary : OmiColors.backgroundSecondary)
-      )
-    }
-    .buttonStyle(.plain)
-    .disabled(isLoading)
-    .onHover { isHovering = $0 }
-  }
-}
-
-// MARK: - App Selector Sheet
-
-struct AppSelectorSheet: View {
-  let apps: [OmiApp]
-  let isLoading: Bool
-  let onSelect: (OmiApp) -> Void
-  let onDismiss: () -> Void
-
-  @State private var selectedAppId: String?
-
-  var body: some View {
-    VStack(spacing: 0) {
-      // Header
-      HStack {
-        Text("Select App")
-          .scaledFont(size: OmiType.subheading, weight: .semibold)
-          .foregroundColor(OmiColors.textPrimary)
-
-        Spacer()
-
-        Button(action: onDismiss) {
-          Image(systemName: "xmark.circle.fill")
-            .scaledFont(size: OmiType.heading)
-            .foregroundColor(OmiColors.textTertiary)
-        }
-        .buttonStyle(.plain)
-      }
-      .padding()
-
-      Divider()
-        .background(OmiColors.backgroundTertiary)
-
-      // Apps list
-      if apps.isEmpty {
-        VStack(spacing: OmiSpacing.md) {
-          Image(systemName: "square.grid.2x2")
-            .scaledFont(size: OmiType.hero)
-            .foregroundColor(OmiColors.textTertiary)
-
-          Text("No Apps Available")
-            .scaledFont(size: OmiType.body, weight: .medium)
-            .foregroundColor(OmiColors.textSecondary)
-
-          Text("Enable apps with memory capability to reprocess conversations")
-            .scaledFont(size: OmiType.caption)
-            .foregroundColor(OmiColors.textTertiary)
-            .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
-      } else {
-        ScrollView {
-          LazyVStack(spacing: OmiSpacing.hairline) {
-            ForEach(apps) { app in
-              AppSelectorRow(
-                app: app,
-                isSelected: selectedAppId == app.id,
-                isLoading: isLoading && selectedAppId == app.id
-              ) {
-                selectedAppId = app.id
-                onSelect(app)
-              }
-            }
-          }
-          .padding(.horizontal, OmiSpacing.sm)
-          .padding(.vertical, OmiSpacing.sm)
-        }
-      }
-    }
-    .frame(width: 320, height: 400)
-    .background(OmiColors.backgroundPrimary)
-  }
-}
-
-struct AppSelectorRow: View {
-  let app: OmiApp
-  let isSelected: Bool
-  let isLoading: Bool
-  let onSelect: () -> Void
-
-  @State private var isHovering = false
-
-  var body: some View {
-    Button(action: onSelect) {
-      HStack(spacing: OmiSpacing.md) {
-        AsyncImage(url: URL(string: app.image)) { phase in
-          switch phase {
-          case .success(let image):
-            image
-              .resizable()
-              .aspectRatio(contentMode: .fill)
-          default:
-            RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius)
-              .fill(OmiColors.backgroundTertiary)
-          }
-        }
-        .frame(width: 44, height: 44)
-        .clipShape(RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius))
-
-        VStack(alignment: .leading, spacing: OmiSpacing.hairline) {
-          Text(app.name)
-            .scaledFont(size: OmiType.body, weight: .medium)
-            .foregroundColor(OmiColors.textPrimary)
-
-          Text(app.author)
-            .scaledFont(size: OmiType.caption)
-            .foregroundColor(OmiColors.textTertiary)
-        }
-
-        Spacer()
-
-        if isLoading {
-          ProgressView()
-            .scaleEffect(0.7)
-        } else if isSelected {
-          Image(systemName: "checkmark.circle.fill")
-            .scaledFont(size: OmiType.heading)
-            .foregroundColor(OmiColors.accent)
-        }
-      }
-      .padding(.horizontal, OmiSpacing.md)
-      .padding(.vertical, OmiSpacing.sm)
-      .background(
-        RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius)
-          .fill(isSelected || isHovering ? OmiColors.backgroundTertiary : Color.clear)
-      )
-    }
-    .buttonStyle(.plain)
-    .disabled(isLoading)
-    .onHover { isHovering = $0 }
   }
 }

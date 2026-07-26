@@ -164,6 +164,47 @@ final class MemoryGraphRevisitTests: XCTestCase {
       ))
   }
 
+  func testMemoryScrollSurfacesSpanTheShellWhileTheColumnCarriesTheCap() {
+    // The scroll view never carries the readable cap: macOS rides the overlay
+    // scroller on its trailing edge, so a capped-and-centred scroll view parks
+    // the scrollbar hundreds of points inside a wide window.
+    let list = MemoryHubLayoutPolicy.contentWidths(
+      conversationID: nil,
+      presentedConversationID: nil,
+      transcriptDrawerOpen: false
+    )
+    XCTAssertEqual(list.scrollView, .infinity)
+    XCTAssertEqual(list.column, MemoryHubLayoutPolicy.readableContentWidth)
+
+    let detail = MemoryHubLayoutPolicy.contentWidths(
+      conversationID: "conversation-1",
+      presentedConversationID: "conversation-1",
+      transcriptDrawerOpen: false
+    )
+    XCTAssertEqual(detail.scrollView, .infinity)
+    XCTAssertEqual(detail.column, MemoryHubLayoutPolicy.readableContentWidth)
+
+    // The open transcript is the one surface that yields the cap, and even then
+    // only the column does — the scroll view already spanned.
+    let transcriptOpen = MemoryHubLayoutPolicy.contentWidths(
+      conversationID: "conversation-1",
+      presentedConversationID: "conversation-1",
+      transcriptDrawerOpen: true
+    )
+    XCTAssertEqual(transcriptOpen.scrollView, .infinity)
+    XCTAssertEqual(transcriptOpen.column, .infinity)
+
+    // A transcript open on some other conversation is not this one's licence.
+    XCTAssertEqual(
+      MemoryHubLayoutPolicy.contentWidths(
+        conversationID: "conversation-1",
+        presentedConversationID: "conversation-2",
+        transcriptDrawerOpen: true
+      ),
+      detail
+    )
+  }
+
   @MainActor
   func testGraphSignatureIsStableAcrossResponseOrdering() {
     let first = sampleGraph()

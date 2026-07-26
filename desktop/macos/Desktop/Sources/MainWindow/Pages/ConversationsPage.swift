@@ -8,6 +8,13 @@ struct ConversationsPage: View {
   @Binding var selectedConversation: ServerConversation?
   @ObservedObject private var automation = ConversationDetailAutomationState.shared
 
+  /// Readable cap for the page's content column. It lands on the header row and
+  /// on the column inside the scroll view, never on the scroll view itself:
+  /// macOS rides the overlay scroller on the scroll view's trailing edge, so a
+  /// capped scroll view floats its scrollbar inside the shell instead of on the
+  /// window border. `.infinity` means no cap.
+  var contentColumnWidth: CGFloat = .infinity
+
   /// When true, renders without internal ScrollViews (for embedding in an outer ScrollView)
   var embedded: Bool = false
 
@@ -58,6 +65,7 @@ struct ConversationsPage: View {
         ConversationDetailView(
           conversation: selected,
           onBack: { selectedConversation = nil },
+          contentColumnWidth: contentColumnWidth,
           folders: appState.folders,
           onMoveToFolder: { conversationId, folderId in
             await appState.moveConversationToFolder(conversationId, folderId: folderId)
@@ -232,6 +240,8 @@ struct ConversationsPage: View {
       .padding(.horizontal, OmiSpacing.xxl)
       .padding(.top, OmiSpacing.lg)
       .padding(.bottom, OmiSpacing.md)
+      .frame(maxWidth: contentColumnWidth)
+      .frame(maxWidth: .infinity)
 
       // The whole page below the header scrolls together. Floating action bars
       // (load-more, merge) stay pinned to the bottom via the ZStack overlay.
@@ -292,6 +302,9 @@ struct ConversationsPage: View {
       GeometryReader { geo in
         ScrollView {
           content
+            // The cap lands here rather than on the ScrollView — see
+            // `contentColumnWidth` — and the outer frame recentres the column.
+            .frame(maxWidth: contentColumnWidth)
             .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
         }
         .refreshable {

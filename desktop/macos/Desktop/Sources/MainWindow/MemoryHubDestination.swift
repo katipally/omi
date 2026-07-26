@@ -108,6 +108,33 @@ struct MemoryDropdownInteractionState: Equatable {
 enum MemoryHubLayoutPolicy {
   static let readableContentWidth: CGFloat = 900
 
+  /// How a scrolling Memory surface splits its width. Two values, never one:
+  /// the scroll view claims the shell, the readable cap rides the column
+  /// inside it.
+  ///
+  /// macOS puts the overlay scroller on the scroll view's trailing edge, so
+  /// capping the scroll view itself and centring it parks the scrollbar
+  /// hundreds of points inside a wide window — the page then reads as a
+  /// floating panel rather than as the surface. Same split the chat transcript
+  /// makes with `ChatMessagesView.contentColumnWidth`.
+  struct ContentWidths: Equatable {
+    let scrollView: CGFloat
+    let column: CGFloat
+  }
+
+  static func contentWidths(
+    conversationID: String?,
+    presentedConversationID: String?,
+    transcriptDrawerOpen: Bool
+  ) -> ContentWidths {
+    let spans = usesAvailableWidth(
+      conversationID: conversationID,
+      presentedConversationID: presentedConversationID,
+      transcriptDrawerOpen: transcriptDrawerOpen
+    )
+    return ContentWidths(scrollView: .infinity, column: spans ? .infinity : readableContentWidth)
+  }
+
   static func usesAvailableWidth(
     conversationID: String?,
     presentedConversationID: String?,

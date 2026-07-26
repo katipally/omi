@@ -1,15 +1,16 @@
 import OmiTheme
 import SwiftUI
 
-/// Persistent Capture + Listening status controls for the shell top bar, shown
-/// on every non-home page (the home screen renders its own column-aligned copy
-/// via `DashboardPage.homeHeader`). Hovering Capture reveals a Rewind shortcut
-/// beneath it.
+/// The Capture + Listening status controls in the shell top bar. This is the
+/// only copy the app renders, and it is present on every page including Home;
+/// `DashboardPage.homeHeader` is a retired second copy with no call site.
 ///
-/// The toggle logic mirrors `DashboardPage`'s and drives the same shared
-/// singletons (`AssistantSettings`, `ProactiveAssistantsPlugin`, `AppState`), so
-/// both surfaces stay consistent. Keep the two copies in sync until they are
-/// unified behind one controller.
+/// Hovering Capture reveals a Rewind shortcut beneath it; hovering Listening
+/// reveals the three capture modes. Both are overlays, so revealing one never
+/// reflows the bar.
+///
+/// The toggle logic lives in `CaptureListeningLogic` and drives the shared
+/// singletons (`AssistantSettings`, `ProactiveAssistantsPlugin`, `AppState`).
 struct CaptureListeningControls: View {
   @ObservedObject var appState: AppState
   var onRewind: () -> Void
@@ -19,6 +20,8 @@ struct CaptureListeningControls: View {
   @State private var isTogglingListening = false
   @State private var hoverCapture = false
   @State private var hoverRewind = false
+  @State private var hoverListening = false
+  @State private var hoverListeningModes = false
 
   @AppStorage("screenAnalysisEnabled") private var screenAnalysisEnabled = true
   @AppStorage("transcriptionEnabled") private var transcriptionEnabled = true
@@ -28,19 +31,7 @@ struct CaptureListeningControls: View {
   var body: some View {
     HStack(spacing: OmiSpacing.sm) {
       captureButton
-
-      HomeListeningStatusButton(
-        title: transcriptionUnavailable ? "Transcription unavailable" : "Listening",
-        systemImage: transcriptionUnavailable
-          ? "exclamationmark.triangle.fill"
-          : (appState.isTranscribing ? "waveform.circle.fill" : "mic.circle"),
-        status: transcriptionUnavailable ? .blocked : (appState.isTranscribing ? .active : .inactive),
-        modeTitle: listeningModeTitle,
-        isMeetingsOnly: listeningCaptureMode == .onlyDuringMeetings,
-        isToggling: isTogglingListening,
-        action: toggleListening,
-        modeAction: toggleListeningMode
-      )
+      listeningButton
     }
     .onAppear(perform: syncCaptureState)
     .onReceive(NotificationCenter.default.publisher(for: .screenCapturePermissionLost)) { _ in
@@ -51,6 +42,10 @@ struct CaptureListeningControls: View {
     }
   }
 
+  /// The retired transcription-failure flag. Nothing reads it since the chip
+  /// started deriving every state from `ListeningChipState`, which folds the
+  /// service error in alongside the capture gate; it stays in-tree so its
+  /// removal can be its own reviewable change.
   private var transcriptionUnavailable: Bool { appState.transcriptionServiceError != nil }
 
   // MARK: Capture button + hover Rewind affordance
@@ -101,6 +96,68 @@ struct CaptureListeningControls: View {
     .fixedSize()
   }
 
+  // MARK: Listening button + hover mode picker
+
+  private var listeningButton: some View {
+    // The title is a constant so a transcription failure cannot widen the chip
+    // and shove the rest of the cluster sideways; the failure shows up in the
+    // icon, the tooltip and the VoiceOver label instead.
+    HomeListeningStatusButton(
+      title: "Listening",
+      systemImage: listeningChipState.systemImage,
+      status: listeningChipState.statusState,
+      modeTitle: listeningModeTitle,
+      isMeetingsOnly: listeningCaptureMode == .onlyDuringMeetings,
+      isToggling: isTogglingListening,
+      action: toggleListening,
+      modeAction: toggleListeningMode,
+      chipState: listeningChipState,
+      modeBadge: listeningModeBadge,
+      modeOptions: listeningModeOptions,
+      setMode: setListeningMode,
+      cycleMode: cycleListeningMode
+    )
+    .onHover { hoverListening = $0 }
+    .overlay(alignment: .top) {
+      if hoverListening || hoverListeningModes {
+        listeningModeChip
+          .offset(y: 34)
+          .transition(.opacity)
+      }
+    }
+    .omiAnimation(.easeOut(duration: 0.12), value: hoverListening || hoverListeningModes)
+  }
+
+  private var listeningModeChip: some View {
+    // Same transparent bridge as Rewind: the cursor has to cross 6pt of gap to
+    // reach the picker, and losing hover mid-travel would snap it shut.
+    VStack(spacing: 0) {
+      Color.clear.frame(height: 6)
+      VStack(spacing: 0) {
+        ForEach(listeningModeOptions) { option in
+          if option.id != listeningModeOptions.first?.id {
+            Rectangle()
+              .fill(OmiColors.textPrimary.opacity(0.08))
+              .frame(height: 1)
+          }
+          ListeningModeRow(option: option) { setListeningMode(option.mode) }
+        }
+      }
+      .background(
+        RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius, style: .continuous)
+          .fill(OmiColors.backgroundTertiary)
+      )
+      .clipShape(RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius, style: .continuous))
+      .overlay(
+        RoundedRectangle(cornerRadius: OmiChrome.smallControlRadius, style: .continuous)
+          .stroke(OmiColors.textPrimary.opacity(0.12), lineWidth: 1)
+      )
+      .shadow(color: .black.opacity(0.30), radius: 16, y: 8)
+    }
+    .onHover { hoverListeningModes = $0 }
+    .fixedSize()
+  }
+
   // MARK: Derived state (mirrors DashboardPage)
 
   private var captureStatus: HomeStatusState {
@@ -115,8 +172,24 @@ struct CaptureListeningControls: View {
     CaptureListeningLogic.listeningCaptureMode(raw: systemAudioCaptureModeRaw)
   }
 
+  private var listeningChipState: ListeningChipState {
+    CaptureListeningLogic.listeningChipState(appState: appState)
+  }
+
   private var listeningModeTitle: String {
     CaptureListeningLogic.listeningModeTitle(appState: appState, raw: systemAudioCaptureModeRaw)
+  }
+
+  private var listeningModeBadge: String? {
+    CaptureListeningLogic.listeningModeBadge(
+      mode: listeningCaptureMode,
+      isTranscribing: appState.isTranscribing,
+      isAwaitingMeeting: appState.isAwaitingMeeting
+    )
+  }
+
+  private var listeningModeOptions: [ListeningModeOption] {
+    CaptureListeningLogic.listeningModeOptions(current: listeningCaptureMode)
   }
 
   // MARK: Actions (shared with DashboardPage via CaptureListeningLogic)
@@ -130,6 +203,14 @@ struct CaptureListeningControls: View {
     CaptureListeningLogic.toggleListeningMode(raw: $systemAudioCaptureModeRaw)
   }
 
+  private func setListeningMode(_ mode: AssistantSettings.SystemAudioCaptureMode) {
+    CaptureListeningLogic.setListeningMode(mode, raw: $systemAudioCaptureModeRaw)
+  }
+
+  private func cycleListeningMode() {
+    CaptureListeningLogic.cycleListeningMode(raw: $systemAudioCaptureModeRaw)
+  }
+
   private func toggleCapture() {
     CaptureListeningLogic.toggleCapture(
       appState: appState, screenAnalysisEnabled: $screenAnalysisEnabled,
@@ -139,5 +220,52 @@ struct CaptureListeningControls: View {
   private func syncCaptureState() {
     CaptureListeningLogic.syncCaptureState(
       screenAnalysisEnabled: $screenAnalysisEnabled, isCaptureMonitoring: $isCaptureMonitoring)
+  }
+}
+
+/// One row of the hover-revealed listening-mode picker. The checkmark sits in a
+/// fixed-width slot so moving the selection never shifts the labels.
+private struct ListeningModeRow: View {
+  let option: ListeningModeOption
+  let action: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: action) {
+      HStack(alignment: .top, spacing: OmiSpacing.sm) {
+        ZStack {
+          if option.isCurrent {
+            Image(systemName: "checkmark")
+              .scaledFont(size: OmiType.micro, weight: .bold)
+              .foregroundStyle(OmiColors.textPrimary)
+          }
+        }
+        .frame(width: 12, height: 14)
+
+        VStack(alignment: .leading, spacing: OmiSpacing.hairline) {
+          Text(option.title)
+            .scaledFont(size: OmiType.caption, weight: .semibold)
+            .foregroundStyle(option.isCurrent ? OmiColors.textPrimary : OmiColors.textSecondary)
+
+          Text(option.detail)
+            .scaledFont(size: OmiType.micro)
+            .foregroundStyle(OmiColors.textTertiary)
+        }
+
+        Spacer(minLength: 0)
+      }
+      .padding(.horizontal, OmiSpacing.md)
+      .padding(.vertical, OmiSpacing.sm)
+      .frame(minWidth: 224, alignment: .leading)
+      .background(isHovering ? OmiColors.textPrimary.opacity(0.07) : Color.clear)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .onHover { isHovering = $0 }
+    .omiAnimation(.easeOut(duration: 0.12), value: isHovering)
+    .help(option.detail)
+    .accessibilityLabel("\(option.title). \(option.detail)")
+    .accessibilityAddTraits(option.isCurrent ? [.isButton, .isSelected] : .isButton)
   }
 }

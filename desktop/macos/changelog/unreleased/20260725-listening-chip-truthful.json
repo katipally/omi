@@ -1,0 +1,3 @@
+{
+  "change": "Fixed the Listening chip claiming it was recording while the microphone was paused waiting for a meeting, and put all three capture modes one hover away"
+}

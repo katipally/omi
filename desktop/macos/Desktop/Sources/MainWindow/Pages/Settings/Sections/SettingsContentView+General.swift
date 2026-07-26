@@ -220,8 +220,11 @@ extension SettingsContentView {
             }
 
             if systemAudioCaptureMode == .onlyDuringMeetings {
+              // The gate stops the microphone too, not just other apps' audio.
+              // Saying so is the difference between "quieter" and "not recording
+              // at all".
               Text(
-                "Omi captures other apps' audio only while you're in a call (e.g. Zoom, Teams, FaceTime). Detecting browser-based calls like Google Meet requires Screen Recording permission."
+                "Your microphone and other apps' audio stay paused until Omi detects a call (e.g. Zoom, Teams, FaceTime). Detecting browser-based calls like Google Meet requires Screen Recording permission."
               )
               .scaledFont(size: OmiType.caption)
               .foregroundColor(OmiColors.textTertiary)

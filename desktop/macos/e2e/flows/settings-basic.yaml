@@ -1,21 +1,24 @@
 version: 2
 name: settings-basic
 tier: manual
-description: Settings navigation smoke — open Settings via gear icon, navigate all 9 sections (v0.12.119+ redesign)
+description: Settings navigation smoke — open Settings via gear icon, navigate all 10 sections (v0.12.119+ redesign)
 app: com.omi.computer-macos
 covers:
   - desktop/macos/Desktop/Sources/MainWindow/Pages/SettingsPage.swift
   - desktop/macos/Desktop/Sources/MainWindow/Pages/Settings/Sections/SettingsContentView+General.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Pages/Settings/Sections/SettingsContentView+Integrations.swift
   - desktop/macos/Desktop/Sources/MainWindow/SettingsSidebar.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Pages/Settings/Sections/IntegrationGrants.swift
+  - desktop/macos/Desktop/Sources/Services/APIClient/APIClient+Integrations.swift
 preconditions:
   - auth_ready
 
 steps:
   - id: S1
     name: Open Settings via gear icon
-    do: "Click the Settings gear icon (label 'gearshape') in the top-right of the nav bar. Verify Settings page opens showing all 9 section names."
+    do: "Click the Settings gear icon (label 'gearshape') in the top-right of the nav bar. Verify Settings page opens showing all 10 section names."
     expect:
-      interactive_count: { min: 9 }
+      interactive_count: { min: 10 }
       text_visible:
         - Settings
         - General
@@ -72,6 +75,15 @@ steps:
         - Shortcuts
 
   - id: S9
+    name: Navigate to Integrations section
+    do: "Click 'Integrations' in the Settings section list. Verify a Google Calendar row and a Gmail row appear, each with a Connect or Disconnect button and a connection status line."
+    expect:
+      text_visible:
+        - Integrations
+        - Gmail
+        - Google Calendar
+
+  - id: S10
     name: Navigate to Advanced section
     do: "Click 'Advanced' in the Settings section list. Verify Advanced settings show AI Setup section with Voice Model and AI Provider dropdowns, Workspace browser, Browser Extension toggle, and Dev Mode toggle."
     expect:
@@ -79,14 +91,14 @@ steps:
         - Advanced
         - AI Setup
 
-  - id: S10
+  - id: S11
     name: Navigate to About section
     do: "Click 'About' in the Settings section list. Verify About section shows app name, version info, links (What's New, Visit Website, Help Center, Privacy Policy, Terms of Service), Software Updates with Check Now button, and Update Channel."
     expect:
       text_visible:
         - About
 
-  - id: S11
+  - id: S12
     name: Return to app via Back button
     do: "Click the Back button to return from Settings. Verify the previous tab loads with the top nav bar visible."
     expect:

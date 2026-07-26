@@ -458,6 +458,7 @@ Settings (SettingsPage.swift) — use `click` for section rows
 ├── Notifications & Privacy — notification frequency/types, daily summary
 ├── Rewind — storage info, excluded apps list
 ├── Shortcuts — Open Omi shortcut, Push to Talk key, PTT microphone, locked mode, PTT sounds
+├── Integrations — Google Calendar and Gmail grants (one shared Google connection)
 ├── Advanced — AI Setup (Voice Model, AI Provider), Workspace, Browser Extension, Dev Mode
 └── About — version info, links, software updates, update channel
 
@@ -486,7 +487,7 @@ System Tray Menu (menu bar icon)
 **Settings section navigation:**
 - Sections are `AXButton` type elements with section name labels
 - Use `click` for navigation — these are SwiftUI views that respond to CGEvent clicks
-- Section labels: General, Account & Plan, Transcription, Floating Bar, Notifications & Privacy, Rewind, Shortcuts, Advanced, About
+- Section labels: General, Account & Plan, Transcription, Floating Bar, Notifications & Privacy, Rewind, Shortcuts, Integrations, Advanced, About
 
 **Memory sub-tabs:**
 - Three `AXButton` tabs within the Memory page: Memories, Conversations, Brain Map
@@ -519,7 +520,7 @@ Reference flows in `desktop/macos/e2e/flows/*.yaml` describe the app's key user 
 | `flows/memories.yaml` | Memory tab — Memories, Conversations, Brain Map sub-tabs | 6 | Sub-tab switching, search, conversation list, brain map render |
 | `flows/tasks.yaml` | Tasks tab — search, Today/No Deadline sections | 5 | Task list, keyboard toolbar, task interactions |
 | `flows/apps-marketplace.yaml` | Apps tab — Imports, Exports, search, filters | 5 | Category filter, All/Installed scope, Create App |
-| `flows/settings-basic.yaml` | Settings — all 9 sections | 11 | General through About, verify each loads |
+| `flows/settings-basic.yaml` | Settings — all 10 sections | 12 | General through About, verify each loads |
 | `flows/rewind.yaml` | Rewind overlay — View menu access, permission gate | 4 | ⌘⌥R shortcut, search, date picker, Grant Permission |
 | `flows/chat-hermetic.yaml` | Home chat with Rust `OMI_LLM_STUB=1` | 6 | Hermetic chat send/receive in Home tab |
 | `flows/language.yaml` | Settings → Transcription language config | 5 | Language mode toggle, voice assistant languages |

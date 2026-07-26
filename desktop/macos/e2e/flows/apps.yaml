@@ -13,6 +13,7 @@ covers:
   - desktop/macos/Desktop/Sources/MainWindow/Pages/ManualInstallationDisclosure.swift
   - desktop/macos/Desktop/Sources/ConferencingApps.swift
   - desktop/macos/Desktop/Sources/ConnectorBrandIcon.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Components/SheetChrome.swift
 preconditions:
   - auth_ready
 

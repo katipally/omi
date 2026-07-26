@@ -244,6 +244,123 @@ extension SettingsContentView {
     return formatter
   }
 
+  // MARK: - Integrations Section
+
+  /// The grants Omi answers questions with. Distinct from Apps → Imports, which
+  /// pulls history in over the local browser session: these are what the
+  /// backend's own tools authorize against, so a disconnected row here is why
+  /// "what's in my email?" comes back asking you to reconnect.
+  var integrationsSection: some View {
+    VStack(spacing: OmiSpacing.xl) {
+      ForEach(IntegrationGrant.allCases) { grant in
+        integrationGrantCard(grant)
+      }
+
+      if let error = integrationGrants.errorMessage {
+        settingsCard(settingId: "integrations.error") {
+          HStack(spacing: OmiSpacing.md) {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundColor(.orange)
+            Text(error)
+              .scaledFont(size: OmiType.body)
+              .foregroundColor(OmiColors.textSecondary)
+              .lineLimit(3)
+            Spacer()
+          }
+        }
+      }
+    }
+    .task { await integrationGrants.load() }
+    .alert(
+      "Disconnect \(integrationGrants.pendingDisconnect?.disconnectDisplayName ?? "")?",
+      isPresented: Binding(
+        get: { integrationGrants.pendingDisconnect != nil },
+        set: { if !$0 { integrationGrants.pendingDisconnect = nil } }
+      )
+    ) {
+      Button("Cancel", role: .cancel) { integrationGrants.pendingDisconnect = nil }
+      Button("Disconnect", role: .destructive) {
+        guard let grant = integrationGrants.pendingDisconnect else { return }
+        integrationGrants.pendingDisconnect = nil
+        Task { await integrationGrants.disconnect(grant) }
+      }
+    } message: {
+      Text("Gmail and Google Calendar share one Google connection, so this disconnects both.")
+    }
+  }
+
+  @ViewBuilder
+  func integrationGrantCard(_ grant: IntegrationGrant) -> some View {
+    let isConnected = integrationGrants.isConnected(grant)
+    let isBusy = integrationGrants.busy == grant
+
+    settingsCard(settingId: "integrations.\(grant.appKey)") {
+      HStack(spacing: OmiSpacing.lg) {
+        Image(systemName: grant.icon)
+          .scaledFont(size: OmiType.subheading)
+          .foregroundColor(OmiColors.textSecondary)
+          .frame(width: 24, height: 24)
+
+        VStack(alignment: .leading, spacing: OmiSpacing.xxs) {
+          Text(grant.displayName)
+            .scaledFont(size: OmiType.subheading, weight: .semibold)
+            .foregroundColor(OmiColors.textPrimary)
+
+          Text(grant.subtitle)
+            .scaledFont(size: OmiType.body)
+            .foregroundColor(OmiColors.textTertiary)
+
+          integrationGrantStatus(isConnected: isConnected)
+        }
+
+        Spacer()
+
+        Button {
+          if isConnected == true {
+            integrationGrants.pendingDisconnect = grant
+          } else {
+            Task { await integrationGrants.connect(grant) }
+          }
+        } label: {
+          if isBusy {
+            ProgressView()
+              .scaleEffect(0.7)
+              .frame(width: 72, height: 22)
+          } else {
+            Text(isConnected == true ? "Disconnect" : "Connect")
+              .scaledFont(size: OmiType.body, weight: .medium)
+          }
+        }
+        .buttonStyle(OmiButtonStyle(isConnected == true ? .secondary : .primary, size: .compact))
+        .disabled(isBusy || integrationGrants.busy != nil || isConnected == nil)
+        .accessibilityIdentifier("integration.\(grant.appKey).action")
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func integrationGrantStatus(isConnected: Bool?) -> some View {
+    switch isConnected {
+    case .none:
+      Text("Checking…")
+        .scaledFont(size: OmiType.caption)
+        .foregroundColor(OmiColors.textTertiary)
+    case .some(true):
+      HStack(spacing: OmiSpacing.xxs) {
+        Image(systemName: "checkmark.circle.fill")
+          .scaledFont(size: OmiType.caption)
+          .foregroundColor(.green)
+        Text("Connected")
+          .scaledFont(size: OmiType.caption)
+          .foregroundColor(OmiColors.textSecondary)
+      }
+    case .some(false):
+      Text("Not connected")
+        .scaledFont(size: OmiType.caption)
+        .foregroundColor(OmiColors.textTertiary)
+    }
+  }
+
   // MARK: - Developer API Keys Subsection
 
 }

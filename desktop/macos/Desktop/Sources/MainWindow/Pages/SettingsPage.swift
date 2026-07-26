@@ -336,6 +336,7 @@ struct SettingsContentView: View {
     case aiChat = "AI Chat"
     case floatingBar = "Floating Bar"
     case shortcuts = "Shortcuts"
+    case integrations = "Integrations"
     case advanced = "Advanced"
     case about = "About"
 
@@ -423,6 +424,10 @@ struct SettingsContentView: View {
       }
     }
   }
+
+  /// Backend grant state for Settings → Integrations. Owned here rather than in
+  /// the section extension because Swift extensions cannot hold storage.
+  @StateObject var integrationGrants = IntegrationGrantStore()
 
   @State var showResetOnboardingAlert: Bool = false
   @State var showRescanFilesAlert: Bool = false
@@ -558,6 +563,8 @@ struct SettingsContentView: View {
           floatingBarSection
         case .shortcuts:
           shortcutsSection
+        case .integrations:
+          integrationsSection
         case .advanced:
           advancedSection
         case .about:

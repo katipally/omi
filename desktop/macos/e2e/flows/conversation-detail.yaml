@@ -11,6 +11,7 @@ covers:
   - desktop/macos/Desktop/Sources/MainWindow/Components/LiveTranscriptView.swift
   - desktop/macos/Desktop/Sources/MainWindow/Components/TranscriptDetailView.swift
   - desktop/macos/Desktop/Sources/MainWindow/Components/CitationCardView.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Pages/ConversationAppInsightsCards.swift
 preconditions:
   - automation_bridge_ready
 

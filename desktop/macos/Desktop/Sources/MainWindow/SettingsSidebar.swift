@@ -347,6 +347,7 @@ struct SettingsSidebar: View {
     .notifications,
     .rewind,
     .shortcuts,
+    .integrations,
     .advanced,
     .about,
   ]
@@ -502,6 +503,7 @@ struct SettingsSidebarItem: View {
     case .aiChat: return "cpu"
     case .floatingBar: return "sparkles"
     case .shortcuts: return "keyboard"
+    case .integrations: return "app.connected.to.app.below.fill"
     case .advanced: return "chart.bar"
     case .about: return "info.circle"
     }

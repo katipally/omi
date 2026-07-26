@@ -20,6 +20,12 @@ covers:
   - desktop/macos/Desktop/Sources/MainWindow/Dashboard/HomeKnowsComposer.swift
   - desktop/macos/Desktop/Sources/MainWindow/MainChatNavigationRequest.swift
   - desktop/macos/Desktop/Sources/DesktopAutomationBridge.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Components/ChatPromptTimeline.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Components/ChatPromptTimelineModel.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Components/ChatTranscriptGeometry.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Components/ChatScrollBehavior.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Pages/HomeStageLayout.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Pages/HomeConnectComponents.swift
 preconditions:
   - automation_bridge_ready
 

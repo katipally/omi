@@ -115,6 +115,12 @@ final class IntegrationGrantStore: ObservableObject {
     }
 
     connected = results
+    // Booleans only. Which grants a user holds is the whole diagnostic; the
+    // grant itself never goes near a log line.
+    let summary = IntegrationGrant.allCases
+      .map { "\($0.appKey)=\(results[$0].map { $0 ? "connected" : "no" } ?? "unreadable")" }
+      .joined(separator: " ")
+    log("IntegrationGrants: read \(summary)")
   }
 
   /// Open the grant's authorization page, then wait for the backend to report

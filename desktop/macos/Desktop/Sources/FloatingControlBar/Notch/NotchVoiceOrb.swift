@@ -1,34 +1,64 @@
 import SwiftUI
 
-/// The Omi identity as one continuous element across a whole voice turn. The
-/// same 8 marks morph between two layouts and never cross-fade:
+/// The Omi identity, as one element for the whole life of a panel. The same 8
+/// marks morph between two layouts and never cross-fade:
 /// - listening / speaking: a horizontal audio waveform (the 8 marks become
 ///   bars that bounce to the mic level while you talk, and to the TTS output
 ///   level while Omi speaks);
 /// - thinking: the 8 marks are the Omi dot-ring, rotating;
-/// - logo: the same dot-ring at rest (shown while a finished reply lingers).
+/// - logo: the same dot-ring at rest — the mark in the closed notch chrome, and
+///   what a finished reply lingers under.
 ///
-/// Rendered once (a persistent overlay in `NotchView`) so switching phase
-/// animates the morph in place rather than swapping views.
+/// Rendered once (a persistent layer in `NotchView`) so switching phase morphs
+/// in place rather than swapping views, and so the mark can travel between the
+/// chrome lobe and the orb slot without ever being two separate logos.
 struct NotchVoiceOrb: View {
   enum Mode: Equatable { case listening, thinking, speaking, logo }
   let mode: Mode
 
+  /// Full-scale reference per source, so one response curve serves both. The
+  /// capture service publishes raw speech RMS, which is tiny — measured at
+  /// ~0.001–0.004 for ordinary talking — while the TTS player pre-scales its own
+  /// by 3.5 before publishing. Normalizing against one shared number is what
+  /// left the listening waveform pinned to its idle floor.
+  static let micFullScale: CGFloat = 0.02
+  static let playbackFullScale: CGFloat = 0.5
+  /// Per-dot tint for the resting ring (ambient agent status). Empty = white.
+  var dotColors: [Color] = []
+
   @State private var model = OrbModel()
+  /// The Canvas needs a per-frame clock only while something is moving. At rest
+  /// the mark is a static ring, and every panel holds one for the whole session
+  /// — an always-live timeline would put idle CPU on every display.
+  @State private var isAnimating = true
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    TimelineView(.animation) { timeline in
+    TimelineView(.animation(paused: !isAnimating)) { timeline in
       Canvas { context, size in
         let level: CGFloat
         switch mode {
-        case .listening: level = CGFloat(AudioLevelMonitor.shared.microphoneLevel)
-        case .speaking: level = CGFloat(AudioLevelMonitor.shared.playbackLevel)
+        // Each source normalized against its own full scale (see above), so the
+        // curve below reads the same 0...1 whichever is driving the waveform.
+        case .listening:
+          level = CGFloat(AudioLevelMonitor.shared.instantMicrophoneLevel) / Self.micFullScale
+        case .speaking:
+          level = CGFloat(AudioLevelMonitor.shared.playbackLevel) / Self.playbackFullScale
         case .thinking, .logo: level = 0
         }
         model.advance(to: timeline.date, level: level, mode: mode, reduceMotion: reduceMotion)
-        model.draw(into: &context, size: size)
+        model.draw(into: &context, size: size, dotColors: dotColors)
       }
+    }
+    // Every mode change re-arms the clock. Only `.logo` ever settles, and only
+    // after the springs and the bars->ring morph have run out; the others are
+    // driven by live audio or a rotation and never stop on their own.
+    .task(id: mode) {
+      isAnimating = true
+      guard mode == .logo else { return }
+      try? await Task.sleep(for: .seconds(1.2))
+      guard !Task.isCancelled else { return }
+      isAnimating = false
     }
     .accessibilityHidden(true)
   }
@@ -47,7 +77,6 @@ final class OrbModel {
   private var rotation: Double = 0
   private var spinning = false
   private var lastTime: CFTimeInterval?
-  private var envelope: Double = 0
 
   private let phases: [Double] = (0..<count).map { Double($0) * 1.9 }
   private let speeds: [Double] = (0..<count).map { 6.0 + 2.5 * sin(Double($0) * 1.3) }
@@ -69,19 +98,22 @@ final class OrbModel {
     spinning = mode == .thinking
     rotation += (spinning && !reduceMotion) ? dt * 2.2 : 0
 
+    // A fixed response curve, not a running-peak normalizer. Dividing by a peak
+    // follower made a whisper and a shout draw the same waveform, and its floor
+    // gate sat above ordinary speech RMS — so the listening bars answered the
+    // idle sine and nothing else, and you got no signal that Omi could hear you.
     let lvl = Double(max(0, level))
-    envelope = max(lvl, envelope - 0.7 * dt)
-    let norm = envelope > 0.04 ? min(1.0, lvl / envelope) : 0.0
-    let gained = pow(norm, 0.75)
+    let gained = min(1.0, pow(lvl, 0.6))
 
     for i in 0..<Self.count {
       let target: Double
       if bars {
-        // Toned down: gentler idle and a smaller audio contribution so the
-        // bars read as a calm voice waveform, not a party visualizer.
+        // A calm voice waveform, not a party visualizer: the idle floor keeps
+        // the bars alive at silence and the wobble only varies the peaks, so
+        // loudness still reads through.
         let idle = 0.10 + 0.07 * (0.5 + 0.5 * sin(now * speeds[i] + phases[i]))
-        let wobble = 0.6 + 0.4 * sin(now * speeds[i] + phases[i])
-        target = max(idle, min(0.85, gained * wobble))
+        let wobble = 0.72 + 0.28 * sin(now * speeds[i] + phases[i])
+        target = max(idle, min(0.9, gained * wobble))
       } else {
         target = 0
       }
@@ -92,14 +124,14 @@ final class OrbModel {
     }
   }
 
-  func draw(into context: inout GraphicsContext, size: CGSize) {
+  func draw(into context: inout GraphicsContext, size: CGSize, dotColors: [Color] = []) {
     let n = Self.count
     let center = CGPoint(x: size.width / 2, y: size.height / 2)
     // Ring sized off height so it reads as the Omi logo regardless of the wide
-    // canvas the waveform needs. Ratios match NotchOmiMark (0.33 radius,
-    // 0.18 dot) so the ring IS the logo.
-    let ringRadius = size.height * 0.33
-    let dotDiameter = size.height * 0.18
+    // canvas the waveform needs. Proportions come from NotchMarkGeometry, the
+    // same source the static mark uses, so the ring IS the logo.
+    let ringRadius = size.height * NotchMarkGeometry.ringRadiusRatio
+    let dotDiameter = size.height * NotchMarkGeometry.dotDiameterRatio
 
     let span = size.width * 0.84
     let step = span / CGFloat(n)
@@ -109,12 +141,8 @@ final class OrbModel {
     let barStartX = (size.width - span) / 2 + step / 2
 
     for i in 0..<n {
-      // Match NotchOmiMark's start angle (-pi) so the ring at rest is the logo.
-      let angle = 2 * Double.pi * Double(i) / Double(n) - Double.pi + rotation
-      let ringPoint = CGPoint(
-        x: center.x + ringRadius * CGFloat(cos(angle)),
-        y: center.y + ringRadius * CGFloat(sin(angle))
-      )
+      let ringPoint = NotchMarkGeometry.ringPoint(
+        index: i, center: center, radius: ringRadius, rotation: rotation)
       let barPoint = CGPoint(x: barStartX + step * CGFloat(i), y: center.y)
       let point = lerp(ringPoint, barPoint, morph)
 
@@ -127,11 +155,15 @@ final class OrbModel {
       let ringOpacity = spinning ? 0.62 + 0.38 * (1.0 - Double(i) / Double(n)) : 0.95
       let opacity = lerp(CGFloat(ringOpacity), 1, morph)
 
+      // Ambient agent status. The caller withholds colors during a voice turn:
+      // a waveform tracking live audio is not where a background job's health
+      // should be read.
+      let tint = dotColors.indices.contains(i) ? dotColors[i] : .white
       let rect = CGRect(
         x: point.x - markW / 2, y: point.y - markH / 2, width: markW, height: markH)
       context.fill(
         Path(roundedRect: rect, cornerRadius: markW / 2),
-        with: .color(.white.opacity(Double(opacity)))
+        with: .color(tint.opacity(Double(opacity)))
       )
     }
   }

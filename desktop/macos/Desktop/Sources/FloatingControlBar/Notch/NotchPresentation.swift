@@ -26,10 +26,20 @@ enum NotchPresentation: Equatable {
     }
   }
 
+  /// Whether a voice turn is on screen. The Omi mark leaves its chrome lobe and
+  /// travels to the centered orb slot for exactly these, so it is the same mark
+  /// that becomes the waveform rather than one fading out as another fades in.
+  var isVoiceTurn: Bool {
+    switch self {
+    case .listening, .thinking, .responding: return true
+    case .hint, .notification, .idle: return false
+    }
+  }
+
   /// The priority ladder: the voice turn runs listening -> thinking ->
   /// responding, then passive surfaces. Pure, so the ordering is unit-testable.
   ///
-  /// Two things here are load-bearing:
+  /// Three things here are load-bearing:
   /// - Thinking beats responding, because the reducer reports both while it is
   ///   waiting for the answer; the compact pill should hold until the reply
   ///   actually starts arriving.
@@ -38,17 +48,24 @@ enum NotchPresentation: Equatable {
   ///   which folds the hint in. Pass the folded one and every actionable PTT
   ///   error ("Microphone unavailable", "Hold longer to record") outranks its
   ///   own hint and renders as a shimmering "Listening...".
+  /// - A voice turn belongs to one display: the one the pointer was on when it
+  ///   started. Every other panel passes `isVoiceDisplay: false` and skips the
+  ///   four voice rungs, so a hold lights up one screen instead of all of them.
+  ///   Notifications are not voice and reach every display.
   static func derive(
     isListening: Bool,
     isThinking: Bool,
     isResponding: Bool,
     hintText: String,
-    notificationID: UUID?
+    notificationID: UUID?,
+    isVoiceDisplay: Bool = true
   ) -> NotchPresentation {
-    if isListening { return .listening }
-    if isThinking { return .thinking }
-    if isResponding { return .responding }
-    if !hintText.isEmpty { return .hint(hintText) }
+    if isVoiceDisplay {
+      if isListening { return .listening }
+      if isThinking { return .thinking }
+      if isResponding { return .responding }
+      if !hintText.isEmpty { return .hint(hintText) }
+    }
     if let notificationID { return .notification(notificationID) }
     return .idle
   }

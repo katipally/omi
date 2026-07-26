@@ -99,15 +99,17 @@ final class NotchScreenManager {
     panels.values.filter { $0.window.isVisible }.count
   }
 
-  /// The frame of the panel on the screen under the pointer. nil before any
-  /// panel exists. Used by automation to locate the notch for a screenshot.
-  var primaryPanelFrame: NSRect? {
+  /// The panel on the screen under the pointer. nil before any panel exists.
+  /// Automation captures the notch through this — the panel is the notch's only
+  /// window, so a screenshot has to come from here rather than from the retired
+  /// floating bar.
+  var primaryPanel: NotchWindow? {
     let pointer = NSEvent.mouseLocation
     let target =
       panels.values.first { $0.vm.screenFrame.contains(pointer) }
       ?? panels[CGMainDisplayID()]
       ?? panels.values.first
-    return target?.window.frame
+    return target?.window
   }
 
   /// Order every panel back on screen (show / clearing snooze).
@@ -161,6 +163,10 @@ final class NotchScreenManager {
       panel.window.orderOut(nil)
       panels.removeValue(forKey: id)
     }
+
+    // A voice turn latched to a display that just went away would leave every
+    // remaining panel suppressed.
+    barState?.clearVoiceDisplayID(unless: seen)
 
     // Newly created panels start hidden; a screen attached while the notch is
     // visible is surfaced here.

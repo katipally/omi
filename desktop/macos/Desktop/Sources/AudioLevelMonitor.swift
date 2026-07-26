@@ -12,6 +12,12 @@ class AudioLevelMonitor: ObservableObject {
   /// Microphone audio level (0.0 - 1.0)
   @Published private(set) var microphoneLevel: Float = 0.0
 
+  /// The same microphone level, published to nobody. Views that already redraw
+  /// every frame (the notch orb's `Canvas`) read this instead: they need each
+  /// update as it arrives, while the `@Published` mirror stays throttled so
+  /// observing views aren't asked to re-lay out at capture rate.
+  private(set) var instantMicrophoneLevel: Float = 0.0
+
   /// System audio level (0.0 - 1.0)
   @Published private(set) var systemLevel: Float = 0.0
 
@@ -34,6 +40,7 @@ class AudioLevelMonitor: ObservableObject {
   /// Throttled to ~5 Hz to prevent excessive SwiftUI re-renders.
   func updateMicrophoneLevel(_ level: Float) {
     pendingMicLevel = level
+    instantMicrophoneLevel = level
     let now = CACurrentMediaTime()
     if now - lastMicUpdate >= updateInterval {
       lastMicUpdate = now
@@ -66,6 +73,7 @@ class AudioLevelMonitor: ObservableObject {
   /// Reset all levels to zero
   func reset() {
     microphoneLevel = 0.0
+    instantMicrophoneLevel = 0.0
     systemLevel = 0.0
     playbackLevel = 0.0
     pendingMicLevel = 0.0

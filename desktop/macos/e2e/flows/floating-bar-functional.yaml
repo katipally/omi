@@ -44,6 +44,17 @@ covers:
   - desktop/macos/Desktop/Sources/Services/APIClient/APIClient+Tools.swift
   - desktop/macos/Desktop/Sources/FloatingControlBar/NotchMomentsCoordinator.swift
   - desktop/macos/Desktop/Sources/FloatingControlBar/FloatingControlBarReceiptCard.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/AgentStatusGroup.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/MainWindowReveal.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/NotchMetrics.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/NotchNotificationCard.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/NotchOmiMarkView.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/NotchScreenManager.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/NotchShape.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/NotchView.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/NotchViewModel.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/NotchWindow.swift
+  - desktop/macos/Desktop/Sources/MainWindow/Components/AgentTranscriptSheet.swift
 preconditions:
   - automation_bridge_ready
 

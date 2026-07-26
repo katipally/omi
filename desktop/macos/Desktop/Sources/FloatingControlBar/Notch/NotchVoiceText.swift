@@ -67,6 +67,9 @@ struct StreamingReplyText: View {
   let fullText: String
   var size: CGFloat = 13
   var opacity: CGFloat = 0.9
+  /// Drives the shimmer. The reveal keeps running until it catches up either
+  /// way — this only says whether more text is still arriving.
+  var isStreaming: Bool = false
 
   /// `JustifiedText` is AppKit, so it can't pick up `.scaledFont`. Read the
   /// scale here and apply it to the NSFont size, or the reply would be the one
@@ -77,19 +80,27 @@ struct StreamingReplyText: View {
 
   var body: some View {
     TimelineView(.animation(paused: !isRevealing)) { timeline in
+      // One revealed string per frame, shared by the glyphs and by the mask the
+      // shimmer builds from them. Shimmering from outside this closure would
+      // mask with a second, independently paced copy of the reveal.
       JustifiedText(
         text: model.revealed(at: timeline.date, full: fullText),
-        size: round(size * fontScale), opacity: opacity)
+        size: round(size * fontScale), opacity: opacity
+      )
+      .shimmer(active: isStreaming)
     }
     // The reveal needs a per-frame clock only while there is still text to
     // catch up on. The model's progress can't drive `paused` directly — once
     // the stream stops, nothing re-evaluates this body, so the flag would
-    // stick. Instead re-arm on every buffer change and wait out the reveal's
-    // own worst-case duration, which is a pure function of its length.
+    // stick. Re-arm on every buffer change and poll the model instead of
+    // guessing a duration: `revealed(at:)` clamps its per-frame step, so a
+    // dropped-frame stretch makes the real reveal outlast any estimate and the
+    // text would freeze mid-sentence.
     .task(id: fullText) {
       isRevealing = true
-      let seconds = Double(fullText.count) / ReplyRevealModel.charsPerSecond
-      try? await Task.sleep(for: .seconds(seconds + 0.2))
+      while !Task.isCancelled, !model.isComplete {
+        try? await Task.sleep(for: .milliseconds(120))
+      }
       isRevealing = false
     }
   }
@@ -105,6 +116,12 @@ final class ReplyRevealModel {
   private var revealed: Double = 0
   private var lastTime: CFTimeInterval?
   private var lastFullCount = 0
+
+  /// True once the reveal has caught up with everything buffered so far. The
+  /// authority for stopping the per-frame clock — a duration estimate can't be,
+  /// because the step is clamped per frame. `lastTime` gates it so a model that
+  /// has not rendered a frame yet never reports itself finished.
+  var isComplete: Bool { lastTime != nil && Int(revealed) >= lastFullCount }
 
   func revealed(at date: Date, full: String) -> String {
     let count = full.count

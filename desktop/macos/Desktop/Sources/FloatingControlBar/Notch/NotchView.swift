@@ -16,6 +16,12 @@ struct NotchView: View {
 
   // MARK: - Presentation ladder
 
+  /// Whether this panel owns the current voice turn. A nil latch means no turn
+  /// has started yet, so every panel behaves as it always did.
+  private var isVoiceDisplay: Bool {
+    barState.voiceDisplayID.map { $0 == vm.displayID } ?? true
+  }
+
   /// Single value that both the panel size and the rendered content derive
   /// from. Priority:
   /// listening > thinking > responding > hint > notification > idle.
@@ -27,12 +33,14 @@ struct NotchView: View {
       isThinking: barState.isThinking,
       isResponding: barState.isVoiceResponseActive,
       hintText: barState.pttHintText.isEmpty ? barState.transientHintText : barState.pttHintText,
-      notificationID: barState.currentNotification?.id
+      notificationID: barState.currentNotification?.id,
+      isVoiceDisplay: isVoiceDisplay
     )
     // A finished reply lingers for a few seconds after the turn ends. heldReply
     // is set while the response streams, so this is already true the instant
     // the response goes inactive — the notch never collapses to idle first.
-    if vm.isLingeringReply {
+    // Gated on the same display, or the reply would linger on every screen.
+    if vm.isLingeringReply, isVoiceDisplay {
       switch base {
       case .idle, .notification: return .responding
       default: return base
@@ -82,10 +90,18 @@ struct NotchView: View {
 
   var body: some View {
     notchBody
+      // The panel starts above the display, so shift the whole surface down by
+      // that much: the shape's top edge then lands exactly on the physical top
+      // edge and only the bleed band is off-screen.
+      .padding(.top, NotchMetrics.topOverscan)
       .frame(width: vm.windowSize.width, height: vm.windowSize.height, alignment: .top)
+      // A panel overlapping the menu bar picks up a top safe-area inset, which
+      // would push the notch down off the edge it has to be welded to.
+      .ignoresSafeArea()
       // Capture the reply as it streams so the linger is ready the moment the
       // response ends (prevents a one-frame collapse to idle).
       .onChange(of: barState.liveVoiceAssistantText) { _, reply in
+        guard isVoiceDisplay else { return }
         vm.noteReply(reply)
       }
       // A new turn starts fresh: reset the measured height and drop any
@@ -148,13 +164,14 @@ struct NotchView: View {
       NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius)
         .fill(Color.black)
         .frame(width: displayedSize.width, height: displayedSize.height)
-        // 1pt seam hider: the top fillets must never reveal a hairline gap
-        // against the physical black notch / bezel.
+        // The bleed band above the display's top edge. The shape's top edge is
+        // full width, so this butts against it exactly; everything it covers is
+        // off-screen, which is the point — the visible top row is always black.
         .overlay(alignment: .top) {
           Rectangle()
             .fill(.black)
-            .frame(height: 1)
-            .padding(.horizontal, topCornerRadius)
+            .frame(height: NotchMetrics.topOverscan)
+            .offset(y: -NotchMetrics.topOverscan)
         }
         .shadow(
           color: (isHovering || presentation.isExpandedSurface) ? .black.opacity(0.7) : .clear,
@@ -163,10 +180,13 @@ struct NotchView: View {
       bodyContent
         .frame(width: displayedSize.width, height: displayedSize.height, alignment: .top)
         .clipShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius))
-      // The Omi orb is rendered once across the whole voice turn so it morphs
-      // in place (waveform -> ring -> waveform) instead of cross-fading. It
-      // sits just below the camera housing, centered.
-      voiceOrbLayer
+      // Chrome and mark are their own persistent layers, never part of the
+      // content crossfade. The gear holds its lobe through every presentation,
+      // and the mark travels between that chrome and the orb slot instead of
+      // one logo fading out while a second fades in.
+      closedChrome
+        .frame(width: displayedSize.width)
+      omiMarkLayer
     }
     .animation(morphAnimation, value: presentation)
     .animation(heightAnimation, value: vm.voiceBodyHeight)
@@ -210,7 +230,7 @@ struct NotchView: View {
       .transition(contentTransition)
     case .hint(let text):
       VStack(spacing: 2) {
-        closedChrome
+        chromeReserve
         Text(text)
           .scaledFont(size: OmiType.caption, weight: .medium)
           .foregroundStyle(.white.opacity(0.75))
@@ -220,22 +240,30 @@ struct NotchView: View {
       .transition(contentTransition)
     case .notification(let id):
       VStack(spacing: NotchMetrics.notificationSpacing) {
-        closedChrome
+        chromeReserve
         if let notification = barState.currentNotification, notification.id == id {
           NotchNotificationCard(notification: notification)
         }
       }
       .transition(contentTransition)
     case .idle:
-      closedChrome
+      // The chrome is its own layer; idle is the black bar and nothing else.
+      Color.clear
     }
   }
 
-  // MARK: - Voice orb (one instance across the whole turn, morphs in place)
+  /// Vertical space the persistent chrome layer occupies at the top.
+  private var chromeReserve: some View {
+    Color.clear.frame(height: vm.closedNotchSize.height)
+  }
+
+  // MARK: - The Omi mark (one instance for the panel's whole life)
 
   /// Height reserved for the morphing orb below the camera housing.
   private var voiceOrbHeight: CGFloat { 30 }
   private var voiceOrbTopGap: CGFloat { 4 }
+  /// Side of the mark while it sits in the chrome lobe.
+  private var chromeMarkSize: CGFloat { 24 }
   /// Space above the transcript: camera strip + gap + orb + breathing room
   /// before the text. Matches the orb overlay's top offset.
   private var voiceTopReserve: CGFloat {
@@ -252,29 +280,63 @@ struct NotchView: View {
   private var respondingText: String { vm.heldReply }
 
   private var voiceOrbMode: NotchVoiceOrb.Mode {
+    guard isVoiceDisplay else { return .logo }
     if barState.isListeningPhase { return .listening }
     if barState.isThinking { return .thinking }
     if barState.isVoiceResponseActive { return .speaking }
-    return .logo  // a finished reply lingering: the Omi mark at rest
+    return .logo  // at rest: the chrome mark, or a finished reply lingering
   }
 
-  @ViewBuilder
-  private var voiceOrbLayer: some View {
-    if barState.isVoicePresentationActive || vm.isLingeringReply {
-      NotchVoiceOrb(mode: voiceOrbMode)
-        .frame(width: 72, height: voiceOrbHeight)
-        .padding(.top, vm.closedNotchSize.height + voiceOrbTopGap)
-        .allowsHitTesting(false)
-        .transition(.opacity)
+  /// Where the mark lives for a presentation. Home is the left chrome lobe;
+  /// a voice turn takes it to the orb slot below the camera housing. Both are
+  /// measured from the ZStack's top-center, so the two positions interpolate
+  /// on the morph spring and the mark arrives exactly as the black mass
+  /// finishes growing.
+  private var markFrame: (size: CGSize, offset: CGSize) {
+    if presentation.isVoiceTurn {
+      return (
+        CGSize(width: 72, height: voiceOrbHeight),
+        CGSize(width: 0, height: vm.closedNotchSize.height + voiceOrbTopGap)
+      )
     }
+    return (
+      CGSize(width: chromeMarkSize, height: chromeMarkSize),
+      CGSize(
+        width: -(cameraGap / 2 + NotchMetrics.closedSideWidth / 2),
+        height: (vm.closedNotchSize.height - chromeMarkSize) / 2
+      )
+    )
+  }
+
+  private var omiMarkLayer: some View {
+    NotchVoiceOrb(
+      mode: voiceOrbMode,
+      // Status tint belongs to the resting mark; during a turn the waveform is
+      // reporting live audio and must not be recolored by a background job.
+      dotColors: presentation.isVoiceTurn
+        ? [] : agentStatus.map { Array(repeating: $0.color, count: 8) } ?? []
+    )
+    .frame(width: markFrame.size.width, height: markFrame.size.height)
+    // Recording dot: transcription is running. Only while the mark is home —
+    // during a turn the waveform already shows that audio is live.
+    .overlay(alignment: .topTrailing) {
+      if barState.isRecording, !presentation.isVoiceTurn {
+        Circle()
+          .fill(Color.red.opacity(0.9))
+          .frame(width: 5, height: 5)
+      }
+    }
+    .offset(x: markFrame.offset.width, y: markFrame.offset.height)
+    .allowsHitTesting(false)
   }
 
   // MARK: - Closed chrome (always-visible Omi identity)
 
   /// The gap the icons visually straddle: the camera housing plus a small
-  /// margin on a real notch, a modest fixed gap where there is no housing.
+  /// margin. Synthesized where there is no housing (`NotchMetrics.cameraWidth`
+  /// falls back), so the chrome sits at the same offsets on every display.
   private var cameraGap: CGFloat {
-    vm.hasPhysicalNotch ? vm.cameraWidth + OmiSpacing.sm : 56
+    vm.cameraWidth + OmiSpacing.sm
   }
 
   /// Ambient agent status: the mark's eight dots take the aggregate color, so a
@@ -284,38 +346,34 @@ struct NotchView: View {
     AgentStatusGroup.aggregate(for: agents.pills)
   }
 
-  /// Logo and gear hug the camera module: [logo][camera][gear] centered as a
-  /// cluster, outer space breathes. The mark opens the main Omi window; the
-  /// gear opens settings — the only two interactions on the closed notch.
+  /// The two lobes flanking the camera module: [mark][camera][gear], centered
+  /// as a cluster so it stays put as the panel widens. Both lobes are the same
+  /// width with their content centered, so the cluster is optically symmetric
+  /// about the housing — edge-aligning instead puts the 24pt mark and the 11pt
+  /// gear at different distances from it.
+  ///
+  /// The left lobe is only the mark's *hit target*: the mark itself is drawn by
+  /// `omiMarkLayer`, which has to be free to travel out of this row. Tapping it
+  /// opens the main Omi window; the gear opens settings.
   private var closedChrome: some View {
     HStack(spacing: 0) {
       Spacer(minLength: 0)
       Button(action: { MainWindowReveal.activate() }) {
-        NotchOmiMark(dotColors: agentStatus.map { Array(repeating: $0.color, count: 8) } ?? [])
-          .frame(width: 24, height: 24)
-          // Recording dot: transcription is running.
-          .overlay(alignment: .topTrailing) {
-            if barState.isRecording {
-              Circle()
-                .fill(Color.red.opacity(0.9))
-                .frame(width: 5, height: 5)
-            }
-          }
-          .frame(
-            width: NotchMetrics.closedSideWidth, height: vm.closedNotchSize.height,
-            alignment: .trailing
-          )
+        Color.clear
+          .frame(width: NotchMetrics.closedSideWidth, height: vm.closedNotchSize.height)
           .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      // Only while the mark is actually here. During a turn the lobe is empty,
+      // and an invisible button is worse than no button — the reply itself is
+      // the tap target then.
+      .disabled(presentation.isVoiceTurn)
+      .accessibilityHidden(presentation.isVoiceTurn)
       .accessibilityLabel(agentStatus?.accessibilityLabel ?? "Open Omi")
       Color.clear
         .frame(width: cameraGap)
       settingsButton
-        .frame(
-          width: NotchMetrics.closedSideWidth, height: vm.closedNotchSize.height,
-          alignment: .leading
-        )
+        .frame(width: NotchMetrics.closedSideWidth, height: vm.closedNotchSize.height)
       Spacer(minLength: 0)
     }
     .frame(height: vm.closedNotchSize.height)

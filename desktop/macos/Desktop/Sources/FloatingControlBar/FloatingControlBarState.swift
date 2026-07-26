@@ -430,13 +430,34 @@ class FloatingControlBarState: NSObject, ObservableObject {
     }
   }
 
+  /// The display a voice turn belongs to: whichever screen the pointer was on
+  /// when the turn began. Only that display's notch renders the voice surface;
+  /// the others keep their closed chrome. nil before the first turn.
+  ///
+  /// Latched at the *start* of the turn on purpose — reading the pointer live
+  /// would teleport a streaming reply to another screen mid-sentence.
+  @Published private(set) var voiceDisplayID: CGDirectDisplayID?
+
+  /// Drop a latch whose display went away (hot-unplug), so the next turn is
+  /// free to pick a screen that still exists.
+  func clearVoiceDisplayID(unless liveDisplayIDs: Set<CGDirectDisplayID>) {
+    guard let voiceDisplayID, !liveDisplayIDs.contains(voiceDisplayID) else { return }
+    self.voiceDisplayID = nil
+  }
+
   private func applyVoiceProjection(_ projection: VoiceTurnUIProjection) {
     // A new hold is a new turn: drop the previous turn's streamed reply so it
     // cannot flash underneath the fresh question.
     if projection.isListening, !voiceProjection.isListening {
       liveVoiceAssistantText = ""
     }
+    let wasActive = isVoicePresentationActive
     voiceProjection = projection
+    if !wasActive, isVoicePresentationActive {
+      voiceDisplayID =
+        NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }?.omiDisplayID
+        ?? CGMainDisplayID()
+    }
     if !isVoicePresentationActive {
       liveVoiceAssistantText = ""
     }

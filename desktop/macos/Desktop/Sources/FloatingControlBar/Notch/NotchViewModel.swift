@@ -35,7 +35,6 @@ final class NotchViewModel: ObservableObject {
   private var lingerTask: Task<Void, Never>?
 
   let displayID: CGDirectDisplayID
-  private(set) var hasPhysicalNotch: Bool
 
   private weak var window: NSWindow?
 
@@ -45,7 +44,6 @@ final class NotchViewModel: ObservableObject {
   init(
     displayID: CGDirectDisplayID,
     screenFrame: CGRect,
-    hasPhysicalNotch: Bool,
     closedNotchSize: CGSize,
     cameraWidth: CGFloat = NotchMetrics.fallbackHiddenCenterWidth,
     sleep: @escaping (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }
@@ -53,7 +51,6 @@ final class NotchViewModel: ObservableObject {
     self.sleep = sleep
     self.displayID = displayID
     self.screenFrame = screenFrame
-    self.hasPhysicalNotch = hasPhysicalNotch
     self.closedNotchSize = closedNotchSize
     self.cameraWidth = cameraWidth
   }
@@ -65,12 +62,8 @@ final class NotchViewModel: ObservableObject {
     self.init(
       displayID: screen.omiDisplayID,
       screenFrame: screen.frame,
-      hasPhysicalNotch: NotchMetrics.screenHasCameraHousing(screen),
       closedNotchSize: NotchMetrics.closedSize(for: screen),
-      cameraWidth: NotchMetrics.cameraWidth(
-        auxiliaryTopLeftArea: screen.auxiliaryTopLeftArea,
-        auxiliaryTopRightArea: screen.auxiliaryTopRightArea
-      ),
+      cameraWidth: NotchMetrics.cameraWidth(for: screen),
       sleep: sleep
     )
   }
@@ -137,7 +130,7 @@ final class NotchViewModel: ObservableObject {
   var windowSize: CGSize {
     CGSize(
       width: maxContentSize.width + NotchMetrics.shadowPadding * 2,
-      height: maxContentSize.height + NotchMetrics.shadowPadding * 2
+      height: maxContentSize.height + NotchMetrics.shadowPadding * 2 + NotchMetrics.topOverscan
     )
   }
 
@@ -162,22 +155,20 @@ final class NotchViewModel: ObservableObject {
 
   func refresh(for screen: NSScreen) {
     screenFrame = screen.frame
-    hasPhysicalNotch = NotchMetrics.screenHasCameraHousing(screen)
     closedNotchSize = NotchMetrics.closedSize(for: screen)
-    cameraWidth = NotchMetrics.cameraWidth(
-      auxiliaryTopLeftArea: screen.auxiliaryTopLeftArea,
-      auxiliaryTopRightArea: screen.auxiliaryTopRightArea
-    )
+    cameraWidth = NotchMetrics.cameraWidth(for: screen)
     positionWindow()
   }
 
   /// Fixed geometry: centered horizontally, pinned to the top. Never animated.
+  /// The panel's top edge sits `topOverscan` *above* the display so the notch
+  /// bleeds off-screen rather than trying to land exactly on the top pixel row.
   private func positionWindow() {
     guard let window else { return }
     let size = windowSize
     let origin = NSPoint(
       x: screenFrame.midX - size.width / 2,
-      y: screenFrame.maxY - size.height
+      y: screenFrame.maxY - size.height + NotchMetrics.topOverscan
     )
     window.setFrame(NSRect(origin: origin, size: size), display: true)
   }

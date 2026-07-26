@@ -21,9 +21,13 @@ enum NotchAnimation {
 
 /// Single source of truth for the notch's fixed geometry.
 enum NotchMetrics {
-  /// Notch size on displays without a physical notch.
-  static let fallbackClosedSize = CGSize(width: 240, height: 34)
-  /// Fallback camera dead zone when the auxiliary areas can't be measured.
+  /// Floor for the closed chrome height where there is no physical notch to
+  /// measure. Width is never a fallback: every display straddles a dead zone.
+  static let fallbackClosedHeight: CGFloat = 34
+  /// The camera dead zone assumed when a display has no measurable housing —
+  /// an external monitor, or a notched one whose auxiliary areas read empty.
+  /// Displays without a camera still reserve it, so the closed notch keeps the
+  /// same proportions everywhere instead of collapsing to a floating cluster.
   static let fallbackHiddenCenterWidth: CGFloat = 172
   /// Padding added around the measured camera gap so chrome never touches it.
   static let hiddenCenterSafetyPadding: CGFloat = 34
@@ -39,6 +43,12 @@ enum NotchMetrics {
   static let notificationSpacing: CGFloat = 8
   /// Slack around the content so the fixed window can hold glow bleed + shadow.
   static let shadowPadding: CGFloat = 22
+  /// How far the panel extends *above* the display's top edge. The notch has to
+  /// look welded to the bezel, and a window sitting exactly on the top edge
+  /// leaves the topmost device pixel row to the desktop — a one-pixel seam of
+  /// wallpaper above the black. Bleeding past the edge puts the boundary
+  /// off-screen instead of trying to land on it exactly.
+  static let topOverscan: CGFloat = 2
   /// Corner radii: (top, bottom) for the closed notch and an expanded surface.
   /// Shape geometry, not chrome — tuned against the physical camera housing,
   /// which is why these are not drawn from `OmiChrome`.
@@ -47,9 +57,11 @@ enum NotchMetrics {
 
   // MARK: - Closed-size math (pure, injectable for tests)
 
-  /// Whether a display should render the hardware-notch presentation.
-  /// Testing hooks OMI_FORCE_NOTCH / OMI_FORCE_NO_NOTCH mirror the legacy
-  /// behavior; NO_NOTCH wins when both are set.
+  /// Whether a display exposes a real camera housing. Geometry no longer
+  /// branches on this — every display reserves a dead zone — but it still
+  /// selects whether the housing is *measured* or *synthesized*, which is what
+  /// makes OMI_FORCE_NO_NOTCH a usable stand-in for an external monitor on a
+  /// notched Mac. NO_NOTCH wins when both hooks are set.
   static func screenHasCameraHousing(_ screen: NSScreen?) -> Bool {
     if let forced = getenv("OMI_FORCE_NO_NOTCH"), String(cString: forced) == "1" { return false }
     if let forced = getenv("OMI_FORCE_NOTCH"), String(cString: forced) == "1" { return true }
@@ -98,13 +110,18 @@ enum NotchMetrics {
   /// menu-bar strip height, floored at the fallback.
   static func closedHeight(topSafeAreaInset: CGFloat, frameMaxY: CGFloat, visibleFrameMaxY: CGFloat) -> CGFloat {
     if topSafeAreaInset > 0 { return topSafeAreaInset }
-    return max(fallbackClosedSize.height, frameMaxY - visibleFrameMaxY - 1)
+    return max(fallbackClosedHeight, frameMaxY - visibleFrameMaxY - 1)
   }
 
   /// The closed notch: camera dead zone flanked by the two always-visible
   /// chrome lobes (logo / gear).
+  ///
+  /// The dead zone is reserved on every display, measured where a housing
+  /// exists and synthesized where none does. Height still differs — a notchless
+  /// display's chrome covers the menu-bar strip, not a camera bump — but the
+  /// horizontal proportions are identical, so the mark and gear land at the
+  /// same offsets from center on a MacBook and an external monitor alike.
   static func closedSize(
-    hasCameraHousing: Bool,
     auxiliaryTopLeftArea: NSRect?,
     auxiliaryTopRightArea: NSRect?,
     topSafeAreaInset: CGFloat,
@@ -113,23 +130,33 @@ enum NotchMetrics {
   ) -> CGSize {
     let height = closedHeight(
       topSafeAreaInset: topSafeAreaInset, frameMaxY: frameMaxY, visibleFrameMaxY: visibleFrameMaxY)
-    guard hasCameraHousing else {
-      return CGSize(width: fallbackClosedSize.width, height: height)
-    }
     let center = hiddenCenterWidth(
       auxiliaryTopLeftArea: auxiliaryTopLeftArea, auxiliaryTopRightArea: auxiliaryTopRightArea)
     return CGSize(width: center + closedSideWidth * 2, height: height)
   }
 
+  /// The housing measurements to size from. A display with no housing — or one
+  /// forced to behave like it has none — reports nil so the dead zone is
+  /// synthesized from `fallbackHiddenCenterWidth` instead.
+  static func auxiliaryAreas(for screen: NSScreen) -> (left: NSRect?, right: NSRect?) {
+    guard screenHasCameraHousing(screen) else { return (nil, nil) }
+    return (screen.auxiliaryTopLeftArea, screen.auxiliaryTopRightArea)
+  }
+
   static func closedSize(for screen: NSScreen) -> CGSize {
-    closedSize(
-      hasCameraHousing: screenHasCameraHousing(screen),
-      auxiliaryTopLeftArea: screen.auxiliaryTopLeftArea,
-      auxiliaryTopRightArea: screen.auxiliaryTopRightArea,
-      topSafeAreaInset: screen.safeAreaInsets.top,
+    let areas = auxiliaryAreas(for: screen)
+    return closedSize(
+      auxiliaryTopLeftArea: areas.left,
+      auxiliaryTopRightArea: areas.right,
+      topSafeAreaInset: areas.left == nil ? 0 : screen.safeAreaInsets.top,
       frameMaxY: screen.frame.maxY,
       visibleFrameMaxY: screen.visibleFrame.maxY
     )
+  }
+
+  static func cameraWidth(for screen: NSScreen) -> CGFloat {
+    let areas = auxiliaryAreas(for: screen)
+    return cameraWidth(auxiliaryTopLeftArea: areas.left, auxiliaryTopRightArea: areas.right)
   }
 }
 

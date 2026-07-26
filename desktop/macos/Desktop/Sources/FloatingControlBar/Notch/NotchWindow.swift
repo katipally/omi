@@ -103,6 +103,14 @@ final class NotchWindow: NSPanel {
   /// event monitors in `NotchView`, which run without the panel being key.
   override var canBecomeKey: Bool { false }
   override var canBecomeMain: Bool { false }
+
+  /// AppKit nudges a window down so it clears the menu bar. The notch is
+  /// deliberately placed past the top of the display (see
+  /// `NotchMetrics.topOverscan`), so take the requested frame verbatim —
+  /// constraining it is what puts the seam back.
+  override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+    frameRect
+  }
 }
 
 /// The panel is never key, so views must accept the first mouse click or taps

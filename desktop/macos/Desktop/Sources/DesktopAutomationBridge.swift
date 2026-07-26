@@ -2170,7 +2170,7 @@ final class DesktopAutomationActionRegistry {
 
     register(
       name: "capture_floating_bar_png",
-      summary: "Write PNG of the floating control bar window (in-process capture)",
+      summary: "Write PNG of the notch panel under the pointer (in-process capture)",
       params: ["path"]
     ) { params in
       guard let path = params["path"], !path.isEmpty else {
@@ -2178,11 +2178,11 @@ final class DesktopAutomationActionRegistry {
       }
       return await MainActor.run { () -> [String: String] in
         guard
-          let window = NSApp.windows.compactMap({ $0 as? FloatingControlBarWindow }).first,
+          let window = FloatingControlBarManager.shared.notch.primaryPanel,
           window.isVisible,
           let contentView = window.contentView
         else {
-          return ["error": "no_floating_bar_window"]
+          return ["error": "no_notch_panel"]
         }
         let bounds = contentView.bounds
         guard let rep = contentView.bitmapImageRepForCachingDisplay(in: bounds) else {

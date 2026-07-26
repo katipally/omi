@@ -39,6 +39,12 @@ covers:
   - desktop/macos/Desktop/Sources/VoiceTurnDomain/VoiceTurnStateMachine.swift
   - desktop/macos/Desktop/Sources/FloatingControlBar/GlobalShortcutManager.swift
   - desktop/macos/Desktop/Sources/VADGateService.swift
+  - desktop/macos/Desktop/Sources/AudioLevelMonitor.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/PTTCue.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/NotchPresentation.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/NotchVoiceOrb.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/NotchVoiceText.swift
+  - desktop/macos/Desktop/Sources/FloatingControlBar/Notch/NotchVoiceView.swift
 preconditions:
   - automation_bridge_ready
 

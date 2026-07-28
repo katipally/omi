@@ -135,38 +135,6 @@ final class ChatDiscoverabilityTests: XCTestCase {
         "only after explicit current-turn consent"))
   }
 
-  /// The tool was reachable and documented but nothing routed a decision to it,
-  /// so the model asked in prose instead. Every other tool has a "when to use"
-  /// line; this asserts ask_user has one too.
-  func testDesktopPromptRoutesUserDecisionsToAskUser() {
-    let prompt = DesktopCapabilityRegistry.scopedDesktopToolPrompt(excluding: [])
-    XCTAssertTrue(prompt.contains("**ask_user**"), "ask_user capability doc missing")
-    XCTAssertTrue(
-      prompt.contains("-> ask_user, not a question in prose"),
-      "ask_user has no when-to-use routing line")
-  }
-
-  /// Steering the channel must not loosen the frequency policy: the initiative
-  /// block still says to act rather than ask, and still reserves asking first
-  /// for actions that leave the machine.
-  func testDesktopPromptSteersAskChannelWithoutInvitingMoreQuestions() {
-    let prompt = ChatPrompts.desktopChat
-    XCTAssertTrue(prompt.contains("ask with ask_user instead of ending your reply with a question"))
-    XCTAssertTrue(prompt.contains("how you ask, not how often"))
-    XCTAssertTrue(prompt.contains("You are expected to act, not just answer."))
-    XCTAssertTrue(
-      prompt.contains(
-        "Ask first only when an action leaves this machine (sending, posting, sharing, purchasing)"))
-  }
-
-  /// A tool excluded from a scoped surface takes its routing line with it, so a
-  /// surface that cannot render the card is never told to ask.
-  func testAskUserRoutingLineDisappearsWithTheTool() {
-    let scoped = DesktopCapabilityRegistry.scopedDesktopToolPrompt(excluding: ["ask_user"])
-    XCTAssertFalse(scoped.contains("**ask_user**"))
-    XCTAssertFalse(scoped.contains("-> ask_user, not a question in prose"))
-  }
-
   func testDesktopPromptMentionsListAgentSessionsForSubagents() {
     let prompt = ChatPrompts.desktopChat
     XCTAssertTrue(prompt.contains("**list_agent_sessions**"))

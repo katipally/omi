@@ -199,13 +199,6 @@ enum DesktopCapabilityRegistry {
       when: !available(dismissalTools).isEmpty
     )
     append("Onboarding knowledge graph -> save_knowledge_graph.", when: has("save_knowledge_graph"))
-    // Every other tool has a routing line; without one here the model reads a
-    // capability doc for ask_user and nothing that sends a decision to it. This
-    // routes the channel only -- when to ask at all is decided elsewhere.
-    append(
-      "A decision only {user_name} can make (ambiguous request, missing detail you would otherwise guess, several reasonable paths) -> ask_user, not a question in prose. Put every question that decision needs into the one call.",
-      when: has("ask_user")
-    )
     return lines.joined(separator: "\n")
   }
 }

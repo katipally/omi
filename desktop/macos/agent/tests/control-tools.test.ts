@@ -543,6 +543,18 @@ describe("agent control tools", () => {
     ).toMatchObject({ error: { message: expect.stringContaining("unavailable") } });
   });
 
+  it("accepts a question set a model padded with a blank option", () => {
+    // A blank label is a slip about one choice. Rejecting the call for it costs
+    // the user every other question in the set, which is what happened live.
+    const parsed = agentControlToolSchemas.ask_user.safeParse({
+      questions: [
+        { question: "Which stack?", options: [""], allow_free_text: true },
+        { question: "Host where?", options: ["Vercel", "", "Fly"] },
+      ],
+    });
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+  });
+
   it("rejects an ask_user call that carries no question", async () => {
     const context = {
       kernel: {} as never,

@@ -193,7 +193,11 @@ const ASK_USER_MAX_OPTIONS_PER_QUESTION = 32;
 
 const askUserQuestionSchema = strictObject({
   question: z.string().min(1),
-  options: z.array(z.string().min(1)).max(ASK_USER_MAX_OPTIONS_PER_QUESTION).optional(),
+  // Deliberately not `.min(1)` per option. A model that pads the list with a
+  // blank label is making a slip about one choice, and rejecting the whole call
+  // for it throws away every other question the user was about to be asked.
+  // `normalizeAskUser` drops blank labels, so the card never renders one.
+  options: z.array(z.string()).max(ASK_USER_MAX_OPTIONS_PER_QUESTION).optional(),
   allow_free_text: z.boolean().optional(),
 });
 

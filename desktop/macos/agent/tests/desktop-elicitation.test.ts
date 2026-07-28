@@ -292,6 +292,27 @@ describe("ask_user normalization", () => {
     expect(requests.every((request) => request.channel === "omi_ask_user")).toBe(true);
   });
 
+  it("drops a blank option instead of losing the question it belongs to", () => {
+    // Observed live: a model padded a free-text question with options: [""].
+    // Rejecting the call for it discarded all four questions the user was
+    // about to be asked.
+    const requests = normalizeAskUser({
+      adapterId: "acp",
+      agentLabel: "Omi",
+      args: {
+        questions: [
+          { question: "Which stack?", options: [""], allow_free_text: true },
+          { question: "Host where?", options: ["Vercel", "", "Fly"] },
+        ],
+      },
+    });
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0].options).toEqual([]);
+    expect(requests[0].allowsFreeText).toBe(true);
+    expect(requests[1].options.map((option) => option.label)).toEqual(["Vercel", "Fly"]);
+  });
+
   it("drops an entry that asks nothing rather than carding an empty question", () => {
     const requests = normalizeAskUser({
       adapterId: "acp",
